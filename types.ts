@@ -41,7 +41,7 @@ export interface SaleItem {
 
 // Representa uma venda completa
 export interface Sale {
-  id: string;
+  id:string;
   date: string; // ISO string format
   items: SaleItem[];
   totalAmount: number;
@@ -59,6 +59,7 @@ export interface User {
   name: string;
   email: string;
   role: 'administrador' | 'vendedor' | 'caixa';
+  password?: string; // Adicionado para a simulação de login
 }
 
 // Usado para dados de gráficos

@@ -1,4 +1,4 @@
-import { Product, Sale, Customer, SystemSettings } from '../types';
+import { Product, Sale, Customer, SystemSettings, User } from '../types';
 
 // Simula um banco de dados em memória
 let mockProducts: Product[] = [
@@ -30,6 +30,11 @@ let mockSettings: SystemSettings = {
     pixKey: 'a1b2c3d4-e5f6-7890-1234-567890abcdef', // Chave PIX aleatória (UUID)
 };
 
+const mockUsers: User[] = [
+  { id: 'u1', name: 'Admin', email: 'admin@pdv.com', role: 'administrador', password: '123' },
+  { id: 'u2', name: 'Caixa', email: 'caixa@pdv.com', role: 'caixa', password: '123' },
+];
+
 const simulateDelay = (ms: number) => new Promise(res => setTimeout(res, ms));
 
 // Simula a geração de uma chave de acesso de 44 dígitos para a NFC-e
@@ -38,6 +43,16 @@ const generateNfceAccessKey = () => {
 };
 
 export const api = {
+  login: async (email: string, password: string): Promise<User> => {
+    await simulateDelay(1000);
+    const user = mockUsers.find(u => u.email === email && u.password === password);
+    if (user) {
+      const { password, ...userWithoutPassword } = user;
+      return userWithoutPassword;
+    }
+    throw new Error('Credenciais inválidas. Verifique seu e-mail e senha.');
+  },
+
   getProducts: async (): Promise<Product[]> => {
     await simulateDelay(500);
     return [...mockProducts];

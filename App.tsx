@@ -1,41 +1,24 @@
-import React, { useState } from 'react';
+import React from 'react';
 import Layout from './components/Layout';
-import Dashboard from './components/Dashboard';
-import POS from './components/POS';
-import Products from './components/Products';
-import SalesHistory from './components/SalesHistory';
-import Customers from './components/Customers';
-import Settings from './components/Settings';
-import { Page } from './types';
+import Login from './components/Login';
+import { AuthProvider, useAuth } from './auth/AuthContext';
 
-// O componente principal que gerencia a navegação entre as telas.
+// O componente principal que gerencia a navegação e o estado de autenticação.
+const AppContent: React.FC = () => {
+  const { isAuthenticated, user } = useAuth();
+  
+  if (!isAuthenticated || !user) {
+    return <Login />;
+  }
+
+  return <Layout />;
+};
+
 const App: React.FC = () => {
-  const [currentPage, setCurrentPage] = useState<Page>('dashboard');
-
-  // Função para renderizar o componente da página atual
-  const renderPage = () => {
-    switch (currentPage) {
-      case 'dashboard':
-        return <Dashboard />;
-      case 'pos':
-        return <POS />;
-      case 'products':
-        return <Products />;
-      case 'sales':
-        return <SalesHistory />;
-      case 'customers':
-        return <Customers />;
-      case 'settings':
-        return <Settings />;
-      default:
-        return <Dashboard />;
-    }
-  };
-
   return (
-    <Layout currentPage={currentPage} setCurrentPage={setCurrentPage}>
-      {renderPage()}
-    </Layout>
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
   );
 };
 

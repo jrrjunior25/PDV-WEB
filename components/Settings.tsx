@@ -3,26 +3,31 @@ import { api } from '../services/api';
 import { SystemSettings } from '../types';
 import Button from './ui/Button';
 import Input from './ui/Input';
+import { useAuth } from '../auth/AuthContext';
+import { AlertTriangleIcon } from './icons/Icon';
 
 const Settings: React.FC = () => {
   const [settings, setSettings] = useState<Partial<SystemSettings>>({});
   const [loading, setLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const { user } = useAuth();
 
   useEffect(() => {
-    const fetchSettings = async () => {
-      setLoading(true);
-      try {
-        const data = await api.getSettings();
-        setSettings(data);
-      } catch (error) {
-        console.error("Failed to fetch settings", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchSettings();
-  }, []);
+    if (user?.role === 'administrador') {
+      const fetchSettings = async () => {
+        setLoading(true);
+        try {
+          const data = await api.getSettings();
+          setSettings(data);
+        } catch (error) {
+          console.error("Failed to fetch settings", error);
+        } finally {
+          setLoading(false);
+        }
+      };
+      fetchSettings();
+    }
+  }, [user]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -41,6 +46,16 @@ const Settings: React.FC = () => {
       setIsSaving(false);
     }
   };
+
+  if (user?.role !== 'administrador') {
+    return (
+      <div className="flex flex-col items-center justify-center h-full text-center bg-yellow-50 border border-yellow-200 text-yellow-800 p-8 rounded-lg">
+        <AlertTriangleIcon className="h-12 w-12 mb-4" />
+        <h2 className="text-2xl font-bold">Acesso Negado</h2>
+        <p className="mt-2">Você não tem permissão para visualizar esta página.</p>
+      </div>
+    );
+  }
 
   if (loading) {
     return <div className="flex justify-center items-center h-full"><div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-brand-primary"></div></div>;

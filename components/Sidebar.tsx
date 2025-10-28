@@ -1,6 +1,7 @@
 import React from 'react';
-import { Page } from '../types';
-import { HomeIcon, ShoppingCartIcon, PackageIcon, BarChart3Icon, UsersIcon, SettingsIcon } from './icons/Icon';
+import { Page, User } from '../types';
+import { useAuth } from '../auth/AuthContext';
+import { HomeIcon, ShoppingCartIcon, PackageIcon, BarChart3Icon, UsersIcon, SettingsIcon, LogOutIcon } from './icons/Icon';
 
 interface SidebarProps {
   currentPage: Page;
@@ -8,14 +9,18 @@ interface SidebarProps {
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
+  const { user, logout } = useAuth();
+
   const navItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: HomeIcon },
-    { id: 'pos', label: 'PDV (Caixa)', icon: ShoppingCartIcon },
-    { id: 'products', label: 'Produtos', icon: PackageIcon },
-    { id: 'sales', label: 'Vendas', icon: BarChart3Icon },
-    { id: 'customers', label: 'Clientes', icon: UsersIcon },
-    { id: 'settings', label: 'Configurações', icon: SettingsIcon },
+    { id: 'dashboard', label: 'Dashboard', icon: HomeIcon, roles: ['administrador', 'vendedor', 'caixa'] },
+    { id: 'pos', label: 'PDV (Caixa)', icon: ShoppingCartIcon, roles: ['administrador', 'vendedor', 'caixa'] },
+    { id: 'products', label: 'Produtos', icon: PackageIcon, roles: ['administrador', 'vendedor'] },
+    { id: 'sales', label: 'Vendas', icon: BarChart3Icon, roles: ['administrador', 'vendedor'] },
+    { id: 'customers', label: 'Clientes', icon: UsersIcon, roles: ['administrador', 'vendedor'] },
+    { id: 'settings', label: 'Configurações', icon: SettingsIcon, roles: ['administrador'] },
   ];
+  
+  const availableNavItems = navItems.filter(item => user && item.roles.includes(user.role));
 
   return (
     <aside className="w-16 md:w-64 bg-brand-primary text-white flex flex-col transition-all duration-300">
@@ -25,7 +30,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
       </div>
       <nav className="flex-1 mt-4">
         <ul>
-          {navItems.map(item => (
+          {availableNavItems.map(item => (
             <li key={item.id} className="px-2">
               <button
                 onClick={() => setCurrentPage(item.id as Page)}
@@ -42,8 +47,18 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
           ))}
         </ul>
       </nav>
-      <div className="p-4 border-t border-brand-secondary text-center">
-        <p className="text-xs hidden md:block">© 2024 PDV Inteligente</p>
+      <div className="p-2 border-t border-brand-secondary">
+        <div className="p-2 hidden md:block">
+            <p className="text-sm font-semibold truncate">{user?.name}</p>
+            <p className="text-xs text-brand-accent capitalize">{user?.role}</p>
+        </div>
+        <button
+          onClick={logout}
+          className="w-full flex items-center justify-center md:justify-start p-3 my-1 rounded-md text-sm font-medium transition-colors hover:bg-red-500/80"
+        >
+          <LogOutIcon className="h-6 w-6" />
+          <span className="ml-3 hidden md:block">Sair</span>
+        </button>
       </div>
     </aside>
   );

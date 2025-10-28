@@ -31,7 +31,7 @@ let mockSettings: SystemSettings = {
 };
 
 const mockUsers: User[] = [
-  { id: 'u1', name: 'Admin', email: 'admin@pdv.com', role: 'administrador', password: '123' },
+  { id: 'u1', name: 'Admin', email: 'admin@pdv.com', role: 'administrador', password: 'admin 123' },
   { id: 'u2', name: 'Caixa', email: 'caixa@pdv.com', role: 'caixa', password: '123' },
 ];
 

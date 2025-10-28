@@ -1,4 +1,4 @@
-import { Product, Sale, Customer, SystemSettings, User, ProductCategory, Supplier, AccountPayable, Delivery, CashRegisterSession, Sangria, Return, StoreCredit, ReturnItem } from '../types';
+import { Product, Sale, Customer, SystemSettings, User, ProductCategory, Supplier, AccountPayable, Delivery, CashRegisterSession, Sangria, Return, StoreCredit, ReturnItem, PurchaseOrder, PurchaseOrderItem } from '../types';
 
 // --- MOCK DATABASE ---
 
@@ -10,12 +10,12 @@ let mockProductCategories: ProductCategory[] = [
 ];
 
 let mockProducts: Product[] = [
-  { id: 'p1', name: 'Café Especial Grão 250g', description: 'Café arábica de alta qualidade, torra média.', price: 25.50, stock: 50, lowStockThreshold: 10, categoryId: 'cat1', barcode: '789000000001', imageUrl: 'https://picsum.photos/seed/coffee/400/400', ncm: '0901.21.00', cest: '17.099.00', cfop: '5102', origin: 'Nacional' },
-  { id: 'p2', name: 'Notebook Pro X1', description: 'Processador i7, 16GB RAM, 512GB SSD.', price: 7500.00, stock: 8, lowStockThreshold: 5, categoryId: 'cat2', barcode: '789000000002', imageUrl: 'https://picsum.photos/seed/laptop/400/400', ncm: '8471.30.19', cest: '21.031.00', cfop: '5102', origin: 'Estrangeira' },
-  { id: 'p3', name: 'Livro: A Arte da Programação', description: 'Um clássico da ciência da computação.', price: 120.00, stock: 15, lowStockThreshold: 5, categoryId: 'cat3', barcode: '789000000003', imageUrl: 'https://picsum.photos/seed/book/400/400', ncm: '4901.99.00', cest: '', cfop: '5102', origin: 'Nacional' },
-  { id: 'p4', name: 'Mouse Sem Fio Ergonômico', description: 'Conforto e precisão para o dia a dia.', price: 150.00, stock: 3, lowStockThreshold: 10, categoryId: 'cat2', barcode: '789000000004', imageUrl: 'https://picsum.photos/seed/mouse/400/400', ncm: '8471.60.53', cest: '21.036.00', cfop: '5102', origin: 'Estrangeira' },
-  { id: 'p5', name: 'Teclado Mecânico RGB', description: 'Switches blue para uma digitação precisa.', price: 350.00, stock: 20, lowStockThreshold: 8, categoryId: 'cat2', barcode: '789000000005', imageUrl: 'https://picsum.photos/seed/keyboard/400/400', ncm: '8471.60.52', cest: '21.035.00', cfop: '5102', origin: 'Estrangeira' },
-  { id: 'p6', name: 'Garrafa Térmica Inox 1L', description: 'Mantém sua bebida quente por até 12 horas.', price: 89.90, stock: 40, lowStockThreshold: 15, categoryId: 'cat4', barcode: '789000000006', imageUrl: 'https://picsum.photos/seed/bottle/400/400', ncm: '9617.00.10', cest: '28.029.00', cfop: '5102', origin: 'Nacional' },
+  { id: 'p1', name: 'Café Especial Grão 250g', description: 'Café arábica de alta qualidade, torra média.', price: 25.50, costPrice: 15.00, stock: 50, lowStockThreshold: 10, categoryId: 'cat1', barcode: '789000000001', imageUrl: 'https://picsum.photos/seed/coffee/400/400', ncm: '0901.21.00', cest: '17.099.00', cfop: '5102', origin: 'Nacional' },
+  { id: 'p2', name: 'Notebook Pro X1', description: 'Processador i7, 16GB RAM, 512GB SSD.', price: 7500.00, costPrice: 5800.00, stock: 8, lowStockThreshold: 5, categoryId: 'cat2', barcode: '789000000002', imageUrl: 'https://picsum.photos/seed/laptop/400/400', ncm: '8471.30.19', cest: '21.031.00', cfop: '5102', origin: 'Estrangeira' },
+  { id: 'p3', name: 'Livro: A Arte da Programação', description: 'Um clássico da ciência da computação.', price: 120.00, costPrice: 70.00, stock: 15, lowStockThreshold: 5, categoryId: 'cat3', barcode: '789000000003', imageUrl: 'https://picsum.photos/seed/book/400/400', ncm: '4901.99.00', cest: '', cfop: '5102', origin: 'Nacional' },
+  { id: 'p4', name: 'Mouse Sem Fio Ergonômico', description: 'Conforto e precisão para o dia a dia.', price: 150.00, costPrice: 95.00, stock: 3, lowStockThreshold: 10, categoryId: 'cat2', barcode: '789000000004', imageUrl: 'https://picsum.photos/seed/mouse/400/400', ncm: '8471.60.53', cest: '21.036.00', cfop: '5102', origin: 'Estrangeira' },
+  { id: 'p5', name: 'Teclado Mecânico RGB', description: 'Switches blue para uma digitação precisa.', price: 350.00, costPrice: 210.00, stock: 20, lowStockThreshold: 8, categoryId: 'cat2', barcode: '789000000005', imageUrl: 'https://picsum.photos/seed/keyboard/400/400', ncm: '8471.60.52', cest: '21.035.00', cfop: '5102', origin: 'Estrangeira' },
+  { id: 'p6', name: 'Garrafa Térmica Inox 1L', description: 'Mantém sua bebida quente por até 12 horas.', price: 89.90, costPrice: 45.00, stock: 40, lowStockThreshold: 15, categoryId: 'cat4', barcode: '789000000006', imageUrl: 'https://picsum.photos/seed/bottle/400/400', ncm: '9617.00.10', cest: '28.029.00', cfop: '5102', origin: 'Nacional' },
 ];
 
 let mockSales: Sale[] = [
@@ -45,13 +45,19 @@ let mockDeliveries: Delivery[] = [
   { id: 'd1', saleId: 's1', customerName: 'João Silva', address: 'Rua das Flores, 123, São Paulo, SP', status: 'Entregue', deliveryPerson: 'Marcos', createdAt: new Date(Date.now() - 86400000 * 2).toISOString() },
 ];
 
+let mockPurchaseOrders: PurchaseOrder[] = [
+    { id: 'po1', supplierId: 'sup1', supplierName: 'Distribuidora de Eletrônicos Alpha', items: [ { productId: 'p5', productName: 'Teclado Mecânico RGB', quantityOrdered: 10, quantityReceived: 0, costPrice: 210.00, totalCost: 2100.00 } ], totalAmount: 2100.00, status: 'Pendente', createdAt: new Date(Date.now() - 86400000 * 5).toISOString() },
+    { id: 'po2', supplierId: 'sup2', supplierName: 'Café Sol Nascente Fazendas', items: [ { productId: 'p1', productName: 'Café Especial Grão 250g', quantityOrdered: 50, quantityReceived: 50, costPrice: 15.00, totalCost: 750.00 } ], totalAmount: 750.00, status: 'Recebido', createdAt: new Date(Date.now() - 86400000 * 10).toISOString(), receivedAt: new Date(Date.now() - 86400000 * 8).toISOString() }
+];
+
+
 let mockSettings: SystemSettings = {
-    companyName: 'PDV Inteligente LTDA',
+    companyName: 'JR INFORMATICA LTDA',
     cnpj: '00.000.000/0001-00',
     address: 'Rua Exemplo, 123 - Centro, São Paulo - SP',
     phone: '(11) 5555-4444',
     taxRegime: 'Simples Nacional',
-    pixKey: 'a1b2c3d4-e5f6-7890-1234-567890abcdef',
+    pixKey: '001.586.775-79',
 };
 
 const mockUsers: User[] = [
@@ -413,5 +419,81 @@ export const api = {
     }
 
     return newReturn;
+  },
+
+  // Purchase Orders
+  getPurchaseOrders: async (): Promise<PurchaseOrder[]> => {
+    await simulateDelay(700);
+    return [...mockPurchaseOrders].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  },
+  savePurchaseOrder: async (po: Omit<PurchaseOrder, 'id' | 'createdAt' | 'status'> & { id?: string }): Promise<PurchaseOrder> => {
+    await simulateDelay(800);
+    if (po.id) {
+        const index = mockPurchaseOrders.findIndex(p => p.id === po.id);
+        if (index > -1) {
+            mockPurchaseOrders[index] = { ...mockPurchaseOrders[index], ...po } as PurchaseOrder;
+            return mockPurchaseOrders[index];
+        }
+    }
+    const newPO: PurchaseOrder = {
+        ...(po as Omit<PurchaseOrder, 'id'>),
+        id: `po${Date.now()}`,
+        createdAt: new Date().toISOString(),
+        status: 'Pendente',
+    };
+    mockPurchaseOrders.push(newPO);
+    return newPO;
+  },
+  receiveStock: async (poId: string, itemsReceived: { [productId: string]: number }): Promise<PurchaseOrder> => {
+    await simulateDelay(1200);
+    const poIndex = mockPurchaseOrders.findIndex(p => p.id === poId);
+    if (poIndex === -1) throw new Error("Pedido de compra não encontrado.");
+
+    const po = mockPurchaseOrders[poIndex];
+    let totalReceivedValue = 0;
+
+    Object.entries(itemsReceived).forEach(([productId, quantity]) => {
+        const itemIndex = po.items.findIndex(item => item.productId === productId);
+        if (itemIndex > -1 && quantity > 0) {
+            const item = po.items[itemIndex];
+            const actualQuantityReceived = Math.min(quantity, item.quantityOrdered - item.quantityReceived);
+
+            item.quantityReceived += actualQuantityReceived;
+            totalReceivedValue += actualQuantityReceived * item.costPrice;
+
+            // Update product stock
+            const productIndex = mockProducts.findIndex(p => p.id === productId);
+            if (productIndex > -1) {
+                mockProducts[productIndex].stock += actualQuantityReceived;
+            }
+        }
+    });
+
+    const totalOrdered = po.items.reduce((acc, item) => acc + item.quantityOrdered, 0);
+    const totalReceived = po.items.reduce((acc, item) => acc + item.quantityReceived, 0);
+
+    if (totalReceived >= totalOrdered) {
+        po.status = 'Recebido';
+        po.receivedAt = new Date().toISOString();
+    } else if (totalReceived > 0) {
+        po.status = 'Recebido Parcialmente';
+    }
+    
+    // Automatically create an Account Payable for the received amount
+    if (totalReceivedValue > 0) {
+        const newAccountPayable: AccountPayable = {
+            id: `ap${Date.now()}`,
+            supplierId: po.supplierId,
+            supplierName: po.supplierName,
+            description: `Recebimento de mercadoria do Pedido #${po.id.substring(0, 8)}`,
+            amount: totalReceivedValue,
+            dueDate: new Date(Date.now() + 30 * 86400000).toISOString(), // 30 days due date
+            status: 'Pendente',
+        };
+        mockAccountsPayable.push(newAccountPayable);
+    }
+    
+    mockPurchaseOrders[poIndex] = po;
+    return po;
   },
 };

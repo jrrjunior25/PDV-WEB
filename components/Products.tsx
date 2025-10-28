@@ -26,7 +26,7 @@ const Products: React.FC = () => {
   // --- Product Modal Logic ---
   const openProductModal = (product: Partial<Product> | null = null) => {
     setEditingProduct(product ? { ...product } : {
-      name: '', description: '', price: 0, stock: 0, lowStockThreshold: 10,
+      name: '', description: '', price: 0, costPrice: 0, stock: 0, lowStockThreshold: 10,
       categoryId: categories?.[0]?.id || '', barcode: '',
       imageUrl: `https://picsum.photos/seed/${Date.now()}/400/400`,
       ncm: '', cest: '', cfop: '5102', origin: 'Nacional',
@@ -42,7 +42,7 @@ const Products: React.FC = () => {
   const handleProductInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     if (!editingProduct) return;
     const { name, value } = e.target;
-    setEditingProduct({ ...editingProduct, [name]: name === 'price' || name === 'stock' || name === 'lowStockThreshold' ? parseFloat(value) : value });
+    setEditingProduct({ ...editingProduct, [name]: name === 'price' || name === 'costPrice' || name === 'stock' || name === 'lowStockThreshold' ? parseFloat(value) : value });
   };
   
   const handleGenerateDescription = async () => {
@@ -204,13 +204,15 @@ const Products: React.FC = () => {
             </div>
             
             <div className="grid grid-cols-2 gap-4">
-                <Input name="price" label="Preço" type="number" value={String(editingProduct?.price || '')} onChange={handleProductInputChange} />
-                <Input name="barcode" label="Código de Barras" value={editingProduct?.barcode || ''} onChange={handleProductInputChange} />
+                <Input name="costPrice" label="Preço de Custo" type="number" value={String(editingProduct?.costPrice || '')} onChange={handleProductInputChange} />
+                <Input name="price" label="Preço de Venda" type="number" value={String(editingProduct?.price || '')} onChange={handleProductInputChange} />
             </div>
             <div className="grid grid-cols-2 gap-4">
-                <Input name="stock" label="Estoque" type="number" value={String(editingProduct?.stock || '')} onChange={handleProductInputChange} />
-                <Input name="lowStockThreshold" label="Alerta de Estoque Baixo" type="number" value={String(editingProduct?.lowStockThreshold || '')} onChange={handleProductInputChange} />
+                <Input name="barcode" label="Código de Barras" value={editingProduct?.barcode || ''} onChange={handleProductInputChange} />
+                 <Input name="stock" label="Estoque" type="number" value={String(editingProduct?.stock || '')} onChange={handleProductInputChange} />
             </div>
+             <Input name="lowStockThreshold" label="Alerta de Estoque Baixo" type="number" value={String(editingProduct?.lowStockThreshold || '')} onChange={handleProductInputChange} />
+
             <div className="pt-4 mt-4 border-t">
                 <h4 className="text-md font-semibold text-text-primary mb-3">Dados Fiscais</h4>
                 <div className="grid grid-cols-2 gap-4">

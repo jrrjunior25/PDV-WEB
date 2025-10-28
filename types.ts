@@ -1,7 +1,7 @@
 // types.ts
 
 // Define os tipos de página para navegação
-export type Page = 'dashboard' | 'pos' | 'products' | 'sales' | 'customers' | 'settings' | 'deliveries' | 'suppliers' | 'accountsPayable' | 'reports' | 'returns';
+export type Page = 'dashboard' | 'pos' | 'products' | 'sales' | 'customers' | 'settings' | 'deliveries' | 'suppliers' | 'accountsPayable' | 'reports' | 'returns' | 'purchases';
 
 // Representa uma categoria de produto
 export interface ProductCategory {
@@ -15,6 +15,7 @@ export interface Product {
   name: string;
   description: string;
   price: number;
+  costPrice: number; // Preço de custo do produto
   stock: number;
   lowStockThreshold: number;
   categoryId: string; // Alterado de 'category' para 'categoryId'
@@ -183,4 +184,26 @@ export interface CashRegisterSession {
   totalSangrias: number;
   totalStoreCreditUsed: number;
   notes?: string;
+}
+
+// Representa um item em um pedido de compra
+export interface PurchaseOrderItem {
+  productId: string;
+  productName: string;
+  quantityOrdered: number;
+  quantityReceived: number;
+  costPrice: number;
+  totalCost: number;
+}
+
+// Representa um pedido de compra
+export interface PurchaseOrder {
+  id: string;
+  supplierId: string;
+  supplierName: string;
+  items: PurchaseOrderItem[];
+  totalAmount: number;
+  status: 'Pendente' | 'Recebido Parcialmente' | 'Recebido';
+  createdAt: string; // ISO string
+  receivedAt?: string; // ISO string
 }

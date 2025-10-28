@@ -1,0 +1,5 @@
+{
+  "name": "Ponto de Venda Inteligente",
+  "description": "Um aplicativo completo de Ponto de Venda (POS) com controle de estoque, gerenciamento de clientes e produtos, e um dashboard analítico. Desenvolvido em React e TypeScript, utilizando Tailwind CSS para uma interface moderna e responsiva.",
+  "requestFramePermissions": []
+}

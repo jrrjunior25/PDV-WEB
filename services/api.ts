@@ -1,4 +1,4 @@
-import { Product, Sale, Customer, SystemSettings, User, ProductCategory, Supplier, AccountPayable, Delivery, CashRegisterSession, Sangria } from '../types';
+import { Product, Sale, Customer, SystemSettings, User, ProductCategory, Supplier, AccountPayable, Delivery, CashRegisterSession, Sangria, Return, StoreCredit, ReturnItem } from '../types';
 
 // --- MOCK DATABASE ---
 
@@ -19,14 +19,15 @@ let mockProducts: Product[] = [
 ];
 
 let mockSales: Sale[] = [
-    { id: 's1', date: new Date(Date.now() - 86400000 * 2).toISOString(), items: [{ productId: 'p1', productName: 'Café Especial Grão 250g', quantity: 2, unitPrice: 25.50, totalPrice: 51.00 }], totalAmount: 51.00, paymentMethod: 'PIX', customerId: 'c1', customerName: 'João Silva', nfceAccessKey: '43211234567890123456789012345678901234567890', nfceQrCodeUrl: 'https://www.sefaz.rs.gov.br/nfce/consulta?p=432112...|2|1|1|...', deliveryId: 'd1' },
-    { id: 's2', date: new Date(Date.now() - 86400000).toISOString(), items: [{ productId: 'p2', productName: 'Notebook Pro X1', quantity: 1, unitPrice: 7500.00, totalPrice: 7500.00 }, { productId: 'p4', productName: 'Mouse Sem Fio Ergonômico', quantity: 1, unitPrice: 150.00, totalPrice: 150.00 }], totalAmount: 7650.00, paymentMethod: 'Cartão de Crédito', customerId: 'c2', customerName: 'Maria Oliveira' },
-    { id: 's3', date: new Date().toISOString(), items: [{ productId: 'p3', productName: 'Livro: A Arte da Programação', quantity: 1, unitPrice: 120.00, totalPrice: 120.00 }], totalAmount: 120.00, paymentMethod: 'Dinheiro' },
+    { id: 's1', status: 'Completed', date: new Date(Date.now() - 86400000 * 2).toISOString(), items: [{ productId: 'p1', productName: 'Café Especial Grão 250g', quantity: 2, returnableQuantity: 2, unitPrice: 25.50, totalPrice: 51.00 }], totalAmount: 51.00, paymentMethod: 'PIX', customerId: 'c1', customerName: 'João Silva', nfceAccessKey: '43211234567890123456789012345678901234567890', nfceQrCodeUrl: 'https://www.sefaz.rs.gov.br/nfce/consulta?p=432112...|2|1|1|...', deliveryId: 'd1' },
+    { id: 's2', status: 'Completed', date: new Date(Date.now() - 86400000).toISOString(), items: [{ productId: 'p2', productName: 'Notebook Pro X1', quantity: 1, returnableQuantity: 1, unitPrice: 7500.00, totalPrice: 7500.00 }, { productId: 'p4', productName: 'Mouse Sem Fio Ergonômico', quantity: 1, returnableQuantity: 1, unitPrice: 150.00, totalPrice: 150.00 }], totalAmount: 7650.00, paymentMethod: 'Cartão de Crédito', customerId: 'c2', customerName: 'Maria Oliveira' },
+    { id: 's3', status: 'Completed', date: new Date().toISOString(), items: [{ productId: 'p3', productName: 'Livro: A Arte da Programação', quantity: 1, returnableQuantity: 1, unitPrice: 120.00, totalPrice: 120.00 }], totalAmount: 120.00, paymentMethod: 'Dinheiro' },
 ];
 
 let mockCustomers: Customer[] = [
     { id: 'c1', name: 'João Silva', cpfCnpj: '111.222.333-44', email: 'joao.silva@example.com', phone: '(11) 98765-4321', address: 'Rua das Flores, 123, São Paulo, SP' },
     { id: 'c2', name: 'Maria Oliveira', cpfCnpj: '55.666.777/0001-88', email: 'maria.o@example.com', phone: '(21) 91234-5678', address: 'Avenida Copacabana, 456, Rio de Janeiro, RJ' },
+    { id: 'c0', name: 'Consumidor Final', cpfCnpj: '', email: '', phone: '' },
 ];
 
 let mockSuppliers: Supplier[] = [
@@ -64,9 +65,10 @@ let mockCashRegisterSessions: CashRegisterSession[] = [
     { id: 'crs1', openingTime: new Date(Date.now() - 86400000).toISOString(), closingTime: new Date(Date.now() - 86400000 + 8 * 3600000).toISOString(), openingBalance: 200.00, closingBalance: 1550.50, calculatedClosingBalance: 1551.00, status: 'fechado', operatorId: 'u2', operatorName: 'Caixa Teste', salesSummary: { 'Dinheiro': 1201.00, 'PIX': 150.00 }, totalSangrias: 0, notes: 'Pequena diferença no troco.' }
 ];
 let mockSangrias: Sangria[] = [];
+let mockReturns: Return[] = [];
+let mockStoreCredits: StoreCredit[] = [];
 
 const simulateDelay = (ms: number) => new Promise(res => setTimeout(res, ms));
-
 const generateNfceAccessKey = () => Array.from({ length: 44 }, () => Math.floor(Math.random() * 10)).join('');
 
 
@@ -120,7 +122,7 @@ export const api = {
   // Sales
   getSales: async (): Promise<Sale[]> => { await simulateDelay(700); return [...mockSales].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()); },
   
-  processSale: async (sale: Omit<Sale, 'id' | 'date'>, deliveryInfo?: { address: string, customerName: string }): Promise<Sale> => {
+  processSale: async (sale: Omit<Sale, 'id' | 'date' | 'status' | 'items'> & { items: Omit<Sale['items'][0], 'returnableQuantity'>[] }, deliveryInfo?: { address: string, customerName: string }): Promise<Sale> => {
     await simulateDelay(1000);
     const accessKey = generateNfceAccessKey();
     let newDeliveryId: string | undefined = undefined;
@@ -129,8 +131,10 @@ export const api = {
       ...sale,
       id: `s${Date.now()}`,
       date: new Date().toISOString(),
-      nfceAccessKey: accessKey,
-      nfceQrCodeUrl: `https://www.sefaz.rs.gov.br/nfce/consulta?p=${accessKey}|2|1|1|${btoa(String(sale.totalAmount))}`,
+      items: sale.items.map(item => ({...item, returnableQuantity: item.quantity})),
+      status: sale.paymentMethod === 'A Pagar na Entrega' ? 'Pending Payment' : 'Completed',
+      nfceAccessKey: sale.paymentMethod !== 'A Pagar na Entrega' ? accessKey : undefined,
+      nfceQrCodeUrl: sale.paymentMethod !== 'A Pagar na Entrega' ? `https://www.sefaz.rs.gov.br/nfce/consulta?p=${accessKey}|2|1|1|${btoa(String(sale.totalAmount))}` : undefined,
       deliveryId: newDeliveryId,
     };
     
@@ -158,7 +162,11 @@ export const api = {
 
   // Customers
   getCustomers: async (): Promise<Customer[]> => { await simulateDelay(400); return [...mockCustomers]; },
-  
+  getCustomerByCpf: async (cpf: string): Promise<Customer | null> => {
+    await simulateDelay(300);
+    return mockCustomers.find(c => c.cpfCnpj === cpf) || null;
+  },
+
   // Settings
   getSettings: async (): Promise<SystemSettings> => { await simulateDelay(300); return { ...mockSettings }; },
   saveSettings: async (settings: SystemSettings): Promise<SystemSettings> => { await simulateDelay(500); mockSettings = { ...settings }; return { ...mockSettings }; },
@@ -288,5 +296,82 @@ export const api = {
   getCashRegisterSessions: async (): Promise<CashRegisterSession[]> => {
     await simulateDelay(700);
     return [...mockCashRegisterSessions].sort((a,b) => new Date(b.openingTime).getTime() - new Date(a.openingTime).getTime());
-  }
+  },
+
+  // Returns & Store Credits
+  getReturns: async (): Promise<Return[]> => {
+    await simulateDelay(500);
+    return [...mockReturns].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  },
+  getStoreCredits: async (): Promise<StoreCredit[]> => {
+    await simulateDelay(400);
+    return [...mockStoreCredits];
+  },
+  processReturn: async (saleId: string, itemsToReturn: ReturnItem[], reason: string, outcome: 'Refund' | 'Store Credit', operatorName: string): Promise<Return> => {
+    await simulateDelay(1000);
+    const saleIndex = mockSales.findIndex(s => s.id === saleId);
+    if (saleIndex === -1) throw new Error("Venda original não encontrada.");
+    
+    const sale = mockSales[saleIndex];
+    let totalReturnedValue = 0;
+    let totalItemsBeingReturned = 0;
+
+    // Validate and process items
+    itemsToReturn.forEach(returnItem => {
+      const originalItemIndex = sale.items.findIndex(i => i.productId === returnItem.productId);
+      if (originalItemIndex === -1) throw new Error(`Produto ${returnItem.productName} não encontrado na venda original.`);
+      
+      const originalItem = sale.items[originalItemIndex];
+      if (returnItem.quantity > originalItem.returnableQuantity) {
+        throw new Error(`Quantidade a devolver de ${returnItem.productName} é maior que a permitida.`);
+      }
+      
+      originalItem.returnableQuantity -= returnItem.quantity;
+      totalReturnedValue += returnItem.totalPrice;
+      totalItemsBeingReturned += returnItem.quantity;
+      
+      // Update stock
+      const productIndex = mockProducts.findIndex(p => p.id === returnItem.productId);
+      if (productIndex !== -1) {
+        mockProducts[productIndex].stock += returnItem.quantity;
+      }
+    });
+
+    // Update sale status
+    const totalReturnableItemsLeft = sale.items.reduce((acc, item) => acc + item.returnableQuantity, 0);
+    sale.status = totalReturnableItemsLeft === 0 ? 'Fully Returned' : 'Partially Returned';
+    
+    // Create return record
+    const newReturn: Return = {
+      id: `ret${Date.now()}`,
+      saleId,
+      date: new Date().toISOString(),
+      items: itemsToReturn,
+      totalAmount: totalReturnedValue,
+      reason,
+      outcome,
+      operatorName,
+    };
+    mockReturns.push(newReturn);
+
+    // Create store credit if applicable
+    if (outcome === 'Store Credit' && sale.customerId) {
+      const customer = mockCustomers.find(c => c.id === sale.customerId);
+      if (customer) {
+        const newCredit: StoreCredit = {
+          id: `sc${Date.now()}`,
+          customerId: sale.customerId,
+          customerName: customer.name,
+          initialAmount: totalReturnedValue,
+          balance: totalReturnedValue,
+          createdAt: new Date().toISOString(),
+          expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(), // 1 year expiry
+          status: 'Active',
+        };
+        mockStoreCredits.push(newCredit);
+      }
+    }
+
+    return newReturn;
+  },
 };

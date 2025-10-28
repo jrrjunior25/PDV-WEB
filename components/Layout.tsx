@@ -11,6 +11,7 @@ import Deliveries from './Deliveries';
 import Suppliers from './Suppliers';
 import AccountsPayable from './AccountsPayable';
 import Reports from './Reports';
+import ReturnsHistory from './ReturnsHistory';
 
 
 const Layout: React.FC = () => {
@@ -39,6 +40,8 @@ const Layout: React.FC = () => {
         return <AccountsPayable />;
       case 'reports':
         return <Reports />;
+      case 'returns':
+        return <ReturnsHistory />;
       default:
         return <Dashboard />;
     }

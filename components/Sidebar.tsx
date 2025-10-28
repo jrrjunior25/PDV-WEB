@@ -1,7 +1,7 @@
 import React from 'react';
 import { Page, User } from '../types';
 import { useAuth } from '../auth/AuthContext';
-import { HomeIcon, ShoppingCartIcon, PackageIcon, BarChart3Icon, UsersIcon, SettingsIcon, LogOutIcon, TruckIcon, Building2Icon, ClipboardCheckIcon, FileTextIcon } from './icons/Icon';
+import { HomeIcon, ShoppingCartIcon, PackageIcon, BarChart3Icon, UsersIcon, SettingsIcon, LogOutIcon, TruckIcon, Building2Icon, ClipboardCheckIcon, FileTextIcon, Undo2Icon } from './icons/Icon';
 
 interface SidebarProps {
   currentPage: Page;
@@ -16,6 +16,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
     { id: 'pos', label: 'PDV (Caixa)', icon: ShoppingCartIcon, roles: ['administrador', 'vendedor', 'caixa'] },
     { id: 'products', label: 'Produtos', icon: PackageIcon, roles: ['administrador', 'vendedor'] },
     { id: 'sales', label: 'Vendas', icon: BarChart3Icon, roles: ['administrador', 'vendedor'] },
+    { id: 'returns', label: 'Devoluções', icon: Undo2Icon, roles: ['administrador', 'vendedor'] },
     { id: 'deliveries', label: 'Entregas', icon: TruckIcon, roles: ['administrador', 'vendedor'] },
     { id: 'customers', label: 'Clientes', icon: UsersIcon, roles: ['administrador', 'vendedor'] },
     { id: 'suppliers', label: 'Fornecedores', icon: Building2Icon, roles: ['administrador'] },
@@ -54,7 +55,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
       <div className="p-2 border-t border-brand-secondary">
         <div className="p-2 hidden md:block">
             <p className="text-sm font-semibold truncate">{user?.name}</p>
-            <p className="text-xs text-brand-accent capitalize">{user?.role}</p>
+            <p className="text-xs text-text-muted capitalize">{user?.role}</p>
         </div>
         <button
           onClick={logout}

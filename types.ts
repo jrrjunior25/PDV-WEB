@@ -1,7 +1,7 @@
 // types.ts
 
 // Define os tipos de página para navegação
-export type Page = 'dashboard' | 'pos' | 'products' | 'sales' | 'customers' | 'settings' | 'deliveries' | 'suppliers' | 'accountsPayable' | 'reports';
+export type Page = 'dashboard' | 'pos' | 'products' | 'sales' | 'customers' | 'settings' | 'deliveries' | 'suppliers' | 'accountsPayable' | 'reports' | 'returns';
 
 // Representa uma categoria de produto
 export interface ProductCategory {
@@ -42,6 +42,7 @@ export interface SaleItem {
   productId: string;
   productName: string;
   quantity: number;
+  returnableQuantity: number; // Quantidade que ainda pode ser devolvida
   unitPrice: number;
   totalPrice: number;
   imageUrl?: string;
@@ -53,14 +54,49 @@ export interface Sale {
   date: string; // ISO string format
   items: SaleItem[];
   totalAmount: number;
-  paymentMethod: 'Dinheiro' | 'Cartão de Crédito' | 'Cartão de Débito' | 'PIX';
+  paymentMethod: 'Dinheiro' | 'Cartão de Crédito' | 'Cartão de Débito' | 'PIX' | 'A Pagar na Entrega' | 'Troca / Vale-Crédito';
   customerId?: string;
   customerName?: string;
   deliveryId?: string; // ID da entrega associada
+  status: 'Completed' | 'Partially Returned' | 'Fully Returned' | 'Pending Payment';
   // Dados da NFC-e
   nfceAccessKey?: string;
   nfceQrCodeUrl?: string;
 }
+
+// Representa um item devolvido
+export interface ReturnItem {
+  productId: string;
+  productName: string;
+  quantity: number;
+  unitPrice: number;
+  totalPrice: number;
+}
+
+// Representa uma devolução
+export interface Return {
+  id: string;
+  saleId: string;
+  date: string; // ISO string
+  items: ReturnItem[];
+  totalAmount: number;
+  reason: string;
+  outcome: 'Refund' | 'Store Credit';
+  operatorName: string;
+}
+
+// Representa um vale-crédito
+export interface StoreCredit {
+  id: string;
+  customerId: string;
+  customerName: string;
+  initialAmount: number;
+  balance: number;
+  createdAt: string; // ISO string
+  expiresAt: string; // ISO string
+  status: 'Active' | 'Used';
+}
+
 
 // Representa um usuário do sistema
 export interface User {

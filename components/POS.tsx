@@ -1,14 +1,14 @@
 import React, { useState, useMemo, useReducer, useEffect, useRef } from 'react';
 import { api } from '../services/api';
 import { useMockApi } from '../hooks/useMockApi';
-import { Product, SaleItem, Sale, SystemSettings, CashRegisterSession } from '../types';
+import { Product, SaleItem, Sale, SystemSettings, CashRegisterSession, Customer } from '../types';
 import { useAuth } from '../auth/AuthContext';
 import { generatePixBrCode } from '../services/pixService';
 import Input from './ui/Input';
 import Button from './ui/Button';
 import Modal from './ui/Modal';
 import QRCode from './ui/QRCode';
-import { Trash2Icon, SearchIcon, PrinterIcon, CalculatorIcon } from './icons/Icon';
+import { Trash2Icon, SearchIcon, PrinterIcon, CalculatorIcon, UserSearchIcon } from './icons/Icon';
 
 type CartAction =
   | { type: 'ADD_ITEM'; payload: { product: Product, quantity: number } }
@@ -38,6 +38,7 @@ const cartReducer = (state: SaleItem[], action: CartAction): SaleItem[] => {
           unitPrice: product.price,
           totalPrice: product.price * quantity,
           imageUrl: product.imageUrl,
+          returnableQuantity: 0, // This is temporary, will be set on sale completion
         },
       ];
     case 'REMOVE_ITEM':
@@ -68,21 +69,21 @@ const POS: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [cart, dispatch] = useReducer(cartReducer, []);
   const [lastAddedItem, setLastAddedItem] = useState<SaleItem | null>(null);
+  const [activeCustomer, setActiveCustomer] = useState<Customer | null>(null);
   
+  const [isFinalizeModalOpen, setFinalizeModalOpen] = useState(false);
   const [isPaymentModalOpen, setPaymentModalOpen] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState<'Dinheiro' | 'Cartão de Crédito' | 'Cartão de Débito' | 'PIX'>('PIX');
+  const [paymentMethod, setPaymentMethod] = useState<Sale['paymentMethod']>('PIX');
   const [pixBrCode, setPixBrCode] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [saleCompleted, setSaleCompleted] = useState<Sale | null>(null);
-  
-  const [isDelivery, setIsDelivery] = useState(false);
-  const [deliveryAddress, setDeliveryAddress] = useState('');
-  const [customerName, setCustomerName] = useState('');
 
   const [isCashManagerOpen, setIsCashManagerOpen] = useState(false);
   const [sangriaAmount, setSangriaAmount] = useState(0);
   const [closingAmount, setClosingAmount] = useState<number | undefined>(undefined);
   const [closingNotes, setClosingNotes] = useState('');
+  
+  const [isIdentifyCustomerModalOpen, setIdentifyCustomerModalOpen] = useState(true);
 
   const receiptRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -90,16 +91,23 @@ const POS: React.FC = () => {
   const fetchCashSession = async () => {
     const session = await api.getCurrentCashRegisterSession();
     setCashSession(session);
+    if(session){
+        setIdentifyCustomerModalOpen(true);
+    }
   };
   
   useEffect(() => {
     fetchCashSession();
-    searchInputRef.current?.focus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  
+  useEffect(() => {
+    if(cashSession && !activeCustomer) {
+        setIdentifyCustomerModalOpen(true);
+    }
+  }, [cashSession, activeCustomer]);
 
-  const cartTotal = useMemo(() => {
-    return cart.reduce((total, item) => total + item.totalPrice, 0);
-  }, [cart]);
+  const cartTotal = useMemo(() => cart.reduce((total, item) => total + item.totalPrice, 0), [cart]);
   
   const closingReport = useMemo(() => {
     if (!cashSession || !isCashManagerOpen) return null;
@@ -109,7 +117,6 @@ const POS: React.FC = () => {
     return { ...cashSession, expected, difference };
   }, [cashSession, isCashManagerOpen, closingAmount]);
 
-
   useEffect(() => {
     if (cart.length > 0) {
         const lastItem = cart[cart.length - 1];
@@ -117,7 +124,6 @@ const POS: React.FC = () => {
         if (lastProduct) { setLastAddedItem({ ...lastItem, imageUrl: lastProduct.imageUrl }); }
     } else { setLastAddedItem(null); }
   }, [cart, products]);
-
 
   useEffect(() => {
     if (isPaymentModalOpen && paymentMethod === 'PIX' && settings && cartTotal > 0) {
@@ -134,7 +140,7 @@ const POS: React.FC = () => {
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!searchTerm.trim()) return;
+    if (!searchTerm.trim() || !activeCustomer) return;
     const foundProduct = products?.find(p => p.barcode === searchTerm || p.name.toLowerCase() === searchTerm.toLowerCase());
     if (foundProduct) {
         if(foundProduct.stock > 0) {
@@ -142,23 +148,43 @@ const POS: React.FC = () => {
             setSearchTerm('');
         } else { alert(`Produto "${foundProduct.name}" sem estoque.`); }
     } else { alert('Produto não encontrado.'); }
+    searchInputRef.current?.focus();
   };
 
-  const handleFinalizeSale = async () => {
-    if (isDelivery && !deliveryAddress) { alert("Por favor, informe o endereço de entrega."); return; }
+  const startNewSale = () => {
+    dispatch({ type: 'CLEAR_CART' });
+    setSaleCompleted(null);
+    setPaymentModalOpen(false);
+    setFinalizeModalOpen(false);
+    setIdentifyCustomerModalOpen(true);
+    setActiveCustomer(null);
+    refetchProducts();
+  };
+
+  const handleFinalizeSale = async (method?: Sale['paymentMethod']) => {
+    const finalPaymentMethod = method || paymentMethod;
     setIsProcessing(true);
     try {
-        const saleData = { items: cart, totalAmount: cartTotal, paymentMethod, customerName };
-        const deliveryInfo = isDelivery ? { address: deliveryAddress, customerName: customerName || 'Cliente Balcão' } : undefined;
+        const saleData = { 
+            items: cart, 
+            totalAmount: cartTotal, 
+            paymentMethod: finalPaymentMethod, 
+            customerId: activeCustomer?.id,
+            customerName: activeCustomer?.name,
+        };
+        const deliveryInfo = finalPaymentMethod === 'A Pagar na Entrega' ? { address: activeCustomer?.address || '', customerName: activeCustomer?.name || '' } : undefined;
         const completedSale = await api.processSale(saleData, deliveryInfo);
-        setSaleCompleted(completedSale);
-        dispatch({ type: 'CLEAR_CART' });
-        refetchProducts();
-        setIsDelivery(false); setDeliveryAddress(''); setCustomerName('');
+        
+        if (finalPaymentMethod !== 'A Pagar na Entrega') {
+            setSaleCompleted(completedSale);
+        } else {
+            alert('Venda enviada para entrega com sucesso!');
+            startNewSale();
+        }
     } catch (error) {
         console.error("Erro ao processar venda:", error);
         alert("Falha ao processar a venda.");
-    } finally { setIsProcessing(false); setPaymentModalOpen(false); }
+    } finally { setIsProcessing(false); if (method !== 'A Pagar na Entrega') { setFinalizeModalOpen(false); setPaymentModalOpen(false); } }
   };
   
   const handleOpenCashRegister = async (openingBalance: number) => {
@@ -234,7 +260,6 @@ const POS: React.FC = () => {
   
   const ManageCashRegister = () => (
     <div className="space-y-6">
-        {/* Sangria Section */}
         <div className="space-y-3 p-4 border rounded-lg">
             <h4 className="font-semibold text-text-primary">Registrar Sangria (Retirada)</h4>
             <div className="flex items-center gap-3">
@@ -242,8 +267,6 @@ const POS: React.FC = () => {
                 <Button onClick={handleRecordSangria} isLoading={isProcessing} disabled={sangriaAmount <= 0} className="self-end">Registrar</Button>
             </div>
         </div>
-
-        {/* Closing Section */}
         <div className="space-y-4 p-4 border rounded-lg">
             <h4 className="font-semibold text-text-primary mb-2">Fechar Caixa</h4>
             <div className="text-sm space-y-2 p-3 bg-gray-50 rounded-md">
@@ -266,21 +289,87 @@ const POS: React.FC = () => {
     </div>
 );
 
+const IdentifyCustomerModal = () => {
+    const [cpf, setCpf] = useState('');
+    const [isSearching, setIsSearching] = useState(false);
+    const [error, setError] = useState('');
+
+    const handleSearch = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setIsSearching(true);
+        setError('');
+        try {
+            const customer = await api.getCustomerByCpf(cpf);
+            if(customer){
+                setActiveCustomer(customer);
+                setIdentifyCustomerModalOpen(false);
+            } else {
+                setError('Cliente não encontrado.');
+            }
+        } catch(err) { setError('Erro ao buscar cliente.'); }
+        finally { setIsSearching(false); }
+    };
+
+    const handleNoIdentification = async () => {
+        const consumer = await api.getCustomerByCpf(''); // Assuming empty CPF fetches final consumer
+        setActiveCustomer(consumer);
+        setIdentifyCustomerModalOpen(false);
+    }
+    
+    return (
+        <Modal isOpen={isIdentifyCustomerModalOpen} onClose={() => {}} title="Identificar Cliente">
+            <form onSubmit={handleSearch}>
+                <p className="text-text-secondary mb-4">Para iniciar a venda, identifique o cliente pelo CPF/CNPJ ou continue sem identificação.</p>
+                <Input label="CPF / CNPJ do Cliente" value={cpf} onChange={e => setCpf(e.target.value)} placeholder="Digite o número" autoFocus/>
+                {error && <p className="text-red-500 text-sm mt-2">{error}</p>}
+                <div className="flex justify-end gap-3 mt-6">
+                    <Button type="button" variant="secondary" onClick={handleNoIdentification}>Continuar sem identificar</Button>
+                    <Button type="submit" isLoading={isSearching}>Buscar Cliente</Button>
+                </div>
+            </form>
+        </Modal>
+    )
+}
+
+const FinalizeSaleModal = () => (
+    <Modal isOpen={isFinalizeModalOpen} onClose={() => setFinalizeModalOpen(false)} title="Como deseja finalizar?">
+        <div className="flex flex-col gap-4">
+            <Button size="lg" className="w-full" onClick={() => { setFinalizeModalOpen(false); setPaymentModalOpen(true); }}>
+                Finalizar Pagamento no Caixa
+            </Button>
+            <Button size="lg" variant="secondary" className="w-full"
+                onClick={() => handleFinalizeSale('A Pagar na Entrega')}
+                disabled={!activeCustomer?.address}
+                isLoading={isProcessing}>
+                Enviar para Entrega
+            </Button>
+            {!activeCustomer?.address && <p className="text-xs text-center text-red-500">A entrega está desabilitada pois este cliente não possui endereço cadastrado.</p>}
+        </div>
+    </Modal>
+);
 
   return (
     <div className="relative flex flex-col h-full max-h-[calc(100vh-4rem)] bg-gray-200 font-sans">
       {cashSession === null && <CashRegisterOverlay />}
+      {cashSession && !activeCustomer && <IdentifyCustomerModal />}
       
-      {/* Top: The main customer-facing display */}
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-5 gap-4 p-4">
         {/* Left Panel: The Receipt */}
         <div className="lg:col-span-3 bg-white rounded-lg shadow-md flex flex-col p-6">
             <div className="text-center border-b pb-4">
                 <h2 className="text-2xl font-bold text-text-primary">{settings?.companyName || "PDV Inteligente"}</h2>
                 <p className="text-sm text-text-muted">CNPJ: {settings?.cnpj || '00.000.000/0001-00'}</p>
+                 <div className="mt-2 text-sm font-semibold text-blue-600 bg-blue-50 p-2 rounded-md">
+                   Cliente: {activeCustomer?.name || 'Não Identificado'}
+                </div>
             </div>
             <div className="flex-1 overflow-y-auto py-4 font-mono text-lg">
-                {cart.length === 0 ? (
+                {!activeCustomer ? (
+                     <div className="flex flex-col items-center justify-center h-full text-center text-gray-400">
+                        <UserSearchIcon className="h-16 w-16 mb-4"/>
+                        <p className="text-2xl">Identifique o cliente para iniciar</p>
+                    </div>
+                ) : cart.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-full text-center text-gray-400">
                         <p className="text-2xl">Aguardando itens...</p>
                         <p className="text-sm mt-2">Use o leitor de código de barras ou digite o nome do produto abaixo.</p>
@@ -353,6 +442,7 @@ const POS: React.FC = () => {
                     onChange={e => setSearchTerm(e.target.value)}
                     className="pl-12 text-lg h-14"
                     aria-label="Busca de produto"
+                    disabled={!activeCustomer}
                 />
                 <SearchIcon className="absolute left-4 top-1/2 -translate-y-1/2 h-7 w-7 text-text-muted" />
             </form>
@@ -362,25 +452,24 @@ const POS: React.FC = () => {
             <Button variant="danger" className="h-14 w-14 p-0" onClick={() => dispatch({ type: 'CLEAR_CART' })} disabled={cart.length === 0} aria-label="Limpar carrinho">
                 <Trash2Icon className="h-7 w-7"/>
             </Button>
-            <Button onClick={() => setPaymentModalOpen(true)} disabled={cart.length === 0} className="h-14 text-lg px-8">
+            <Button onClick={() => setFinalizeModalOpen(true)} disabled={cart.length === 0} className="h-14 text-lg px-8">
                 Finalizar Venda
             </Button>
         </div>
       </div>
 
-      {/* Cash Register Manager Modal */}
       <Modal isOpen={isCashManagerOpen} onClose={() => setIsCashManagerOpen(false)} title={cashSession ? "Gerenciar Caixa" : "Abrir Caixa"}>
         {cashSession ? <ManageCashRegister /> : <OpenCashRegisterForm />}
       </Modal>
 
-      {/* Payment Modal */}
+      <FinalizeSaleModal />
+
        <Modal isOpen={isPaymentModalOpen} onClose={() => setPaymentModalOpen(false)} title="Finalizar Venda">
         <div>
             <div className="text-center mb-6">
                 <p className="text-lg text-text-secondary">Total a Pagar</p>
                 <p className="text-5xl font-bold text-brand-primary">{cartTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</p>
             </div>
-            
             <div className="space-y-4">
                 <h3 className="font-semibold">Método de pagamento:</h3>
                 <div className="grid grid-cols-2 gap-4">
@@ -400,29 +489,14 @@ const POS: React.FC = () => {
                     <div className="flex justify-center"><QRCode value={pixBrCode} /></div>
                 </div>
             )}
-
-            <div className="mt-6 pt-4 border-t">
-                 <div className="flex items-center mb-4">
-                    <input type="checkbox" id="delivery" checked={isDelivery} onChange={e => setIsDelivery(e.target.checked)} className="h-4 w-4 text-brand-primary focus:ring-brand-light border-gray-300 rounded" />
-                    <label htmlFor="delivery" className="ml-2 block text-sm font-medium text-text-primary">Marcar como entrega</label>
-                </div>
-                {isDelivery && (
-                    <div className="space-y-3 p-4 bg-gray-50 rounded-lg">
-                        <Input label="Nome do Cliente (Opcional)" value={customerName} onChange={e => setCustomerName(e.target.value)} placeholder="Nome para identificação"/>
-                        <Input label="Endereço de Entrega" value={deliveryAddress} onChange={e => setDeliveryAddress(e.target.value)} placeholder="Rua, Número, Bairro, Cidade" required={isDelivery}/>
-                    </div>
-                )}
-            </div>
-
             <div className="mt-8 flex justify-end gap-3">
                 <Button variant="secondary" onClick={() => setPaymentModalOpen(false)}>Cancelar</Button>
-                <Button onClick={handleFinalizeSale} isLoading={isProcessing}>Confirmar Pagamento</Button>
+                <Button onClick={() => handleFinalizeSale()} isLoading={isProcessing}>Confirmar Pagamento</Button>
             </div>
         </div>
        </Modal>
        
-        {/* NFC-e Receipt Modal */}
-       <Modal isOpen={!!saleCompleted} onClose={() => setSaleCompleted(null)} title="NFC-e - Nota Fiscal de Consumidor Eletrônica">
+       <Modal isOpen={!!saleCompleted} onClose={startNewSale} title="NFC-e - Nota Fiscal de Consumidor Eletrônica">
         <div>
             <div ref={receiptRef} className="max-w-md mx-auto border-2 border-dashed border-gray-400 p-4 bg-white text-black font-mono text-xs">
               <div className="text-center">
@@ -481,7 +555,7 @@ const POS: React.FC = () => {
               <p className="text-center">Data: {saleCompleted ? new Date(saleCompleted.date).toLocaleString('pt-BR') : ''}</p>
             </div>
             <div className="mt-6 flex justify-end gap-3 no-print">
-                <Button variant="secondary" onClick={() => setSaleCompleted(null)}>Fechar</Button>
+                <Button variant="secondary" onClick={startNewSale}>Nova Venda</Button>
                 <Button onClick={handlePrintReceipt}><PrinterIcon className="h-4 w-4 mr-2"/>Imprimir</Button>
             </div>
         </div>

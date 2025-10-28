@@ -4,7 +4,7 @@ import Login from './components/Login';
 import { AuthProvider, useAuth } from './auth/AuthContext';
 
 // O componente principal que gerencia a navegação e o estado de autenticação.
-const AppContent: React.FC = () => {
+const AppContent = () => {
   const { isAuthenticated, user } = useAuth();
   
   if (!isAuthenticated || !user) {
@@ -14,7 +14,7 @@ const AppContent: React.FC = () => {
   return <Layout />;
 };
 
-const App: React.FC = () => {
+const App = () => {
   return (
     <AuthProvider>
       <AppContent />

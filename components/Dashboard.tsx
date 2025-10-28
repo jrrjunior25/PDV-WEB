@@ -1,32 +1,36 @@
-
 import React, { useMemo } from 'react';
 import { api } from '../services/api';
 import { useMockApi } from '../hooks/useMockApi';
-import { Product, Sale, Customer, ChartData } from '../types';
+import { Product, Sale, Customer, ChartData, Delivery, AccountPayable } from '../types';
 import Card from './ui/Card';
 import Chart from './ui/Chart';
-import { DollarSignIcon, UsersIcon, PackageWarningIcon, ShoppingBagIcon } from './icons/Icon';
+import { DollarSignIcon, UsersIcon, PackageWarningIcon, ShoppingBagIcon, TruckIcon, ClipboardCheckIcon } from './icons/Icon';
 
 const Dashboard: React.FC = () => {
   const { data: sales, loading: loadingSales } = useMockApi<Sale[]>(api.getSales);
   const { data: products, loading: loadingProducts } = useMockApi<Product[]>(api.getProducts);
   const { data: customers, loading: loadingCustomers } = useMockApi<Customer[]>(api.getCustomers);
+  const { data: deliveries, loading: loadingDeliveries } = useMockApi<Delivery[]>(api.getDeliveries);
+  const { data: accountsPayable, loading: loadingAccounts } = useMockApi<AccountPayable[]>(api.getAccountsPayable);
 
-  const loading = loadingSales || loadingProducts || loadingCustomers;
+  const loading = loadingSales || loadingProducts || loadingCustomers || loadingDeliveries || loadingAccounts;
 
   const stats = useMemo(() => {
-    if (!sales || !products || !customers) return null;
+    if (!sales || !products || !customers || !deliveries || !accountsPayable) return null;
     
     const totalRevenue = sales.reduce((acc, sale) => acc + sale.totalAmount, 0);
     const lowStockProducts = products.filter(p => p.stock <= p.lowStockThreshold).length;
-    
+    const pendingDeliveries = deliveries.filter(d => d.status === 'Pendente' || d.status === 'Em Trânsito').length;
+    const dueAccounts = accountsPayable.filter(a => a.status === 'Pendente' && new Date(a.dueDate) <= new Date(Date.now() + 86400000 * 7)).length;
+
     return {
       totalRevenue: totalRevenue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }),
       totalSales: sales.length,
-      totalCustomers: customers.length,
+      pendingDeliveries: pendingDeliveries,
+      dueAccounts: dueAccounts,
       lowStockProducts,
     };
-  }, [sales, products, customers]);
+  }, [sales, products, customers, deliveries, accountsPayable]);
   
   const salesChartData: ChartData[] = useMemo(() => {
     if (!sales) return [];
@@ -35,7 +39,7 @@ const Dashboard: React.FC = () => {
       const date = new Date(sale.date).toLocaleDateString('pt-BR');
       dailySales[date] = (dailySales[date] || 0) + sale.totalAmount;
     });
-    return Object.entries(dailySales).map(([name, value]) => ({ name, value })).reverse();
+    return Object.entries(dailySales).map(([name, value]) => ({ name, value })).reverse().slice(0, 7);
   }, [sales]);
 
 
@@ -47,10 +51,11 @@ const Dashboard: React.FC = () => {
     <div className="space-y-6">
       <h1 className="text-3xl font-bold text-text-primary">Dashboard</h1>
       
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
         <Card title="Receita Total" value={stats?.totalRevenue ?? 'R$ 0,00'} icon={DollarSignIcon} />
         <Card title="Total de Vendas" value={stats?.totalSales.toString() ?? '0'} icon={ShoppingBagIcon} />
-        <Card title="Clientes" value={stats?.totalCustomers.toString() ?? '0'} icon={UsersIcon} />
+        <Card title="Entregas Pendentes" value={stats?.pendingDeliveries.toString() ?? '0'} icon={TruckIcon} />
+        <Card title="Contas a Pagar" value={stats?.dueAccounts.toString() ?? '0'} icon={ClipboardCheckIcon} isWarning={stats?.dueAccounts > 0}/>
         <Card title="Estoque Baixo" value={stats?.lowStockProducts.toString() ?? '0'} icon={PackageWarningIcon} isWarning={stats?.lowStockProducts > 0} />
       </div>
 

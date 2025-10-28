@@ -1,13 +1,13 @@
 import React, { useState, useMemo, useReducer, useEffect, useRef } from 'react';
 import { api } from '../services/api';
 import { useMockApi } from '../hooks/useMockApi';
-import { Product, SaleItem, Sale, SystemSettings } from '../types';
+import { Product, SaleItem, Sale, SystemSettings, Customer } from '../types';
 import { generatePixBrCode } from '../services/pixService';
 import Input from './ui/Input';
 import Button from './ui/Button';
 import Modal from './ui/Modal';
 import QRCode from './ui/QRCode';
-import { PlusCircleIcon, MinusCircleIcon, Trash2Icon, SearchIcon, ShoppingCartIcon, PrinterIcon, QrCodeIcon } from './icons/Icon';
+import { PlusCircleIcon, MinusCircleIcon, Trash2Icon, SearchIcon, ShoppingCartIcon, PrinterIcon } from './icons/Icon';
 
 type CartAction =
   | { type: 'ADD_ITEM'; payload: Product }
@@ -57,31 +57,23 @@ const cartReducer = (state: SaleItem[], action: CartAction): SaleItem[] => {
 const POS: React.FC = () => {
   const { data: products, loading, refetch: refetchProducts } = useMockApi<Product[]>(api.getProducts);
   const { data: settings } = useMockApi<SystemSettings>(api.getSettings);
+  const { data: customers } = useMockApi<Customer[]>(api.getCustomers);
   
   const [searchTerm, setSearchTerm] = useState('');
-  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
   const [cart, dispatch] = useReducer(cartReducer, []);
   const [isPaymentModalOpen, setPaymentModalOpen] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<'Dinheiro' | 'Cartão de Crédito' | 'Cartão de Débito' | 'PIX'>('PIX');
   const [pixBrCode, setPixBrCode] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [saleCompleted, setSaleCompleted] = useState<Sale | null>(null);
+  const [isDelivery, setIsDelivery] = useState(false);
+  const [deliveryAddress, setDeliveryAddress] = useState('');
+  const [customerName, setCustomerName] = useState('');
   const receiptRef = useRef<HTMLDivElement>(null);
 
   const cartTotal = useMemo(() => {
     return cart.reduce((total, item) => total + item.totalPrice, 0);
   }, [cart]);
-
-  // Debounce effect for search term
-  useEffect(() => {
-    const handler = setTimeout(() => {
-      setDebouncedSearchTerm(searchTerm);
-    }, 300); // 300ms delay
-
-    return () => {
-      clearTimeout(handler);
-    };
-  }, [searchTerm]);
 
   useEffect(() => {
     if (isPaymentModalOpen && paymentMethod === 'PIX' && settings && cartTotal > 0) {
@@ -100,21 +92,29 @@ const POS: React.FC = () => {
 
 
   const filteredProducts = useMemo(() => {
-    if (!debouncedSearchTerm) return products ?? [];
     return products?.filter(p =>
-      p.name.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) ||
-      p.barcode.includes(debouncedSearchTerm)
+      p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      p.barcode.includes(searchTerm)
     ) ?? [];
-  }, [products, debouncedSearchTerm]);
+  }, [products, searchTerm]);
 
   const handleFinalizeSale = async () => {
+    if (isDelivery && !deliveryAddress) {
+      alert("Por favor, informe o endereço de entrega.");
+      return;
+    }
     setIsProcessing(true);
     try {
-        const saleData = { items: cart, totalAmount: cartTotal, paymentMethod };
-        const completedSale = await api.processSale(saleData);
+        const saleData = { items: cart, totalAmount: cartTotal, paymentMethod, customerName };
+        const deliveryInfo = isDelivery ? { address: deliveryAddress, customerName: customerName || 'Cliente Balcão' } : undefined;
+        const completedSale = await api.processSale(saleData, deliveryInfo);
         setSaleCompleted(completedSale);
         dispatch({ type: 'CLEAR_CART' });
         refetchProducts(); // Atualiza a lista de produtos para refletir o novo estoque
+        // Reset delivery state
+        setIsDelivery(false);
+        setDeliveryAddress('');
+        setCustomerName('');
     } catch (error) {
         console.error("Erro ao processar venda:", error);
         alert("Falha ao processar a venda.");
@@ -236,7 +236,7 @@ const POS: React.FC = () => {
             </div>
             
             <div className="space-y-4">
-                <h3 className="font-semibold">Selecione o método de pagamento:</h3>
+                <h3 className="font-semibold">Método de pagamento:</h3>
                 <div className="grid grid-cols-2 gap-4">
                     {(['Dinheiro', 'Cartão de Crédito', 'Cartão de Débito', 'PIX'] as const).map(method => (
                         <button key={method} onClick={() => setPaymentMethod(method)}
@@ -251,11 +251,22 @@ const POS: React.FC = () => {
                 <div className="mt-6 p-4 bg-gray-50 rounded-lg text-center">
                     <h4 className="font-semibold text-text-primary mb-2">Pagar com PIX</h4>
                     <p className="text-sm text-text-muted mb-4">Escaneie o QR Code com o app do seu banco.</p>
-                    <div className="flex justify-center">
-                        <QRCode value={pixBrCode} />
-                    </div>
+                    <div className="flex justify-center"><QRCode value={pixBrCode} /></div>
                 </div>
             )}
+
+            <div className="mt-6 pt-4 border-t">
+                 <div className="flex items-center mb-4">
+                    <input type="checkbox" id="delivery" checked={isDelivery} onChange={e => setIsDelivery(e.target.checked)} className="h-4 w-4 text-brand-primary focus:ring-brand-light border-gray-300 rounded" />
+                    <label htmlFor="delivery" className="ml-2 block text-sm font-medium text-text-primary">Marcar como entrega</label>
+                </div>
+                {isDelivery && (
+                    <div className="space-y-3 p-4 bg-gray-50 rounded-lg">
+                        <Input label="Nome do Cliente (Opcional)" value={customerName} onChange={e => setCustomerName(e.target.value)} placeholder="Nome para identificação"/>
+                        <Input label="Endereço de Entrega" value={deliveryAddress} onChange={e => setDeliveryAddress(e.target.value)} placeholder="Rua, Número, Bairro, Cidade" required={isDelivery}/>
+                    </div>
+                )}
+            </div>
 
             <div className="mt-8 flex justify-end gap-3">
                 <Button variant="secondary" onClick={() => setPaymentModalOpen(false)}>Cancelar</Button>
@@ -309,7 +320,7 @@ const POS: React.FC = () => {
                 <span>{saleCompleted?.totalAmount.toFixed(2)}</span>
               </div>
               <hr className="my-2 border-dashed border-gray-400"/>
-              <p className="text-center">CONSUMIDOR NÃO IDENTIFICADO</p>
+              <p className="text-center">{saleCompleted?.customerName ? saleCompleted.customerName.toUpperCase() : 'CONSUMIDOR NÃO IDENTIFICADO'}</p>
               <hr className="my-2 border-dashed border-gray-400"/>
               <div className="text-center my-4">
                   <div className="flex justify-center">

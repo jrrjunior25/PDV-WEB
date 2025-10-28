@@ -1,7 +1,13 @@
 // types.ts
 
 // Define os tipos de página para navegação
-export type Page = 'dashboard' | 'pos' | 'products' | 'sales' | 'customers' | 'settings';
+export type Page = 'dashboard' | 'pos' | 'products' | 'sales' | 'customers' | 'settings' | 'deliveries' | 'suppliers' | 'accountsPayable' | 'reports';
+
+// Representa uma categoria de produto
+export interface ProductCategory {
+  id: string;
+  name: string;
+}
 
 // Representa um produto no sistema
 export interface Product {
@@ -11,7 +17,7 @@ export interface Product {
   price: number;
   stock: number;
   lowStockThreshold: number;
-  category: string;
+  categoryId: string; // Alterado de 'category' para 'categoryId'
   barcode: string;
   imageUrl: string;
   // Dados fiscais
@@ -23,11 +29,12 @@ export interface Product {
 
 // Representa um cliente
 export interface Customer {
-  id: string;
+  id:string;
   name: string;
   cpfCnpj: string;
   email: string;
   phone: string;
+  address?: string; // Endereço para entregas
 }
 
 // Representa um item em uma venda
@@ -48,6 +55,7 @@ export interface Sale {
   paymentMethod: 'Dinheiro' | 'Cartão de Crédito' | 'Cartão de Débito' | 'PIX';
   customerId?: string;
   customerName?: string;
+  deliveryId?: string; // ID da entrega associada
   // Dados da NFC-e
   nfceAccessKey?: string;
   nfceQrCodeUrl?: string;
@@ -63,9 +71,11 @@ export interface User {
 }
 
 // Usado para dados de gráficos
+// FIX: Added index signature to be compatible with recharts library
 export interface ChartData {
   name: string;
   value: number;
+  [key: string]: any;
 }
 
 // Representa as configurações do sistema
@@ -76,4 +86,37 @@ export interface SystemSettings {
   phone: string;
   taxRegime: 'Simples Nacional' | 'Lucro Presumido' | 'Lucro Real';
   pixKey: string;
+}
+
+// Representa um fornecedor
+export interface Supplier {
+  id: string;
+  name: string;
+  cnpj: string;
+  contactPerson: string;
+  phone: string;
+  email: string;
+}
+
+// Representa uma conta a pagar
+export interface AccountPayable {
+  id: string;
+  supplierId: string;
+  supplierName: string;
+  description: string;
+  amount: number;
+  dueDate: string; // ISO string
+  status: 'Pendente' | 'Paga';
+}
+
+// Representa uma entrega
+export interface Delivery {
+  id: string;
+  saleId: string;
+  customerName: string;
+  address: string;
+  status: 'Pendente' | 'Em Trânsito' | 'Entregue' | 'Cancelada';
+  deliveryPerson?: string;
+  trackingHistory?: { lat: number; lng: number; timestamp: string }[];
+  createdAt: string; // ISO string
 }

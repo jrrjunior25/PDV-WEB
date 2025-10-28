@@ -7,6 +7,11 @@ import Products from './Products';
 import SalesHistory from './SalesHistory';
 import Customers from './Customers';
 import Settings from './Settings';
+import Deliveries from './Deliveries';
+import Suppliers from './Suppliers';
+import AccountsPayable from './AccountsPayable';
+import Reports from './Reports';
+
 
 const Layout: React.FC = () => {
   const [currentPage, setCurrentPage] = useState<Page>('dashboard');
@@ -26,6 +31,14 @@ const Layout: React.FC = () => {
         return <Customers />;
       case 'settings':
         return <Settings />;
+      case 'deliveries':
+        return <Deliveries />;
+      case 'suppliers':
+        return <Suppliers />;
+      case 'accountsPayable':
+        return <AccountsPayable />;
+      case 'reports':
+        return <Reports />;
       default:
         return <Dashboard />;
     }

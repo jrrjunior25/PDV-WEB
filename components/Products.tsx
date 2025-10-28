@@ -1,70 +1,106 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../services/api';
 import { useMockApi } from '../hooks/useMockApi';
-import { Product } from '../types';
+import { Product, ProductCategory } from '../types';
 import Button from './ui/Button';
 import Modal from './ui/Modal';
 import Input from './ui/Input';
 import { generateProductDescription } from '../services/geminiService';
 import { useAuth } from '../auth/AuthContext';
-import { PlusIcon, EditIcon, SparklesIcon } from './icons/Icon';
+import { PlusIcon, EditIcon, SparklesIcon, MinusCircleIcon, PlusCircleIcon } from './icons/Icon';
 
 const Products: React.FC = () => {
   const { data: products, loading, refetch } = useMockApi<Product[]>(api.getProducts);
+  const { data: categories, refetch: refetchCategories } = useMockApi<ProductCategory[]>(api.getProductCategories);
   const [isModalOpen, setModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Partial<Product> | null>(null);
   const [isGeneratingDesc, setIsGeneratingDesc] = useState(false);
+  const [isUpdatingStock, setIsUpdatingStock] = useState<string | null>(null);
+  
+  const [isCategoryModalOpen, setCategoryModalOpen] = useState(false);
+  const [editingCategory, setEditingCategory] = useState<Partial<ProductCategory> | null>(null);
+
   const { user } = useAuth();
   const isAdmin = user?.role === 'administrador';
 
-  const openModal = (product: Partial<Product> | null = null) => {
+  // --- Product Modal Logic ---
+  const openProductModal = (product: Partial<Product> | null = null) => {
     setEditingProduct(product ? { ...product } : {
-      name: '',
-      description: '',
-      price: 0,
-      stock: 0,
-      lowStockThreshold: 10,
-      category: '',
-      barcode: '',
+      name: '', description: '', price: 0, stock: 0, lowStockThreshold: 10,
+      categoryId: categories?.[0]?.id || '', barcode: '',
       imageUrl: `https://picsum.photos/seed/${Date.now()}/400/400`,
-      ncm: '',
-      cest: '',
-      cfop: '5102',
-      origin: 'Nacional',
+      ncm: '', cest: '', cfop: '5102', origin: 'Nacional',
     });
     setModalOpen(true);
   };
 
-  const closeModal = () => {
+  const closeProductModal = () => {
     setModalOpen(false);
     setEditingProduct(null);
   };
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  const handleProductInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     if (!editingProduct) return;
     const { name, value } = e.target;
     setEditingProduct({ ...editingProduct, [name]: name === 'price' || name === 'stock' || name === 'lowStockThreshold' ? parseFloat(value) : value });
   };
   
   const handleGenerateDescription = async () => {
-    if (!editingProduct || !editingProduct.name || !editingProduct.category) {
+    if (!editingProduct || !editingProduct.name || !editingProduct.categoryId) {
         alert("Por favor, preencha o nome e a categoria do produto para gerar uma descrição.");
         return;
     }
+    const categoryName = categories?.find(c => c.id === editingProduct.categoryId)?.name || '';
     setIsGeneratingDesc(true);
     try {
-        const description = await generateProductDescription(editingProduct.name, editingProduct.category);
+        const description = await generateProductDescription(editingProduct.name, categoryName);
         setEditingProduct({ ...editingProduct, description });
     } finally {
         setIsGeneratingDesc(false);
     }
   };
 
-  const handleSave = async () => {
+  const handleProductSave = async () => {
     if (!editingProduct) return;
     await api.saveProduct(editingProduct as Product);
     refetch();
-    closeModal();
+    closeProductModal();
+  };
+  
+  const handleStockChange = async (productId: string, newStock: number) => {
+    if (newStock < 0 || isUpdatingStock) return;
+    setIsUpdatingStock(productId);
+    try {
+      await api.updateProductStock(productId, newStock);
+      refetch();
+    } catch (error) {
+      console.error("Failed to update stock", error);
+      alert("Erro ao atualizar o estoque.");
+    } finally {
+      setIsUpdatingStock(null);
+    }
+  };
+
+  // --- Category Modal Logic ---
+  const openCategoryModal = (category: Partial<ProductCategory> | null = null) => {
+    setEditingCategory(category ? { ...category } : { name: '' });
+    setCategoryModalOpen(true);
+  };
+
+  const closeCategoryModal = () => {
+    setCategoryModalOpen(false);
+    setEditingCategory(null);
+  };
+
+  const handleCategorySave = async () => {
+    if (!editingCategory?.name) return;
+    await api.saveProductCategory(editingCategory as ProductCategory);
+    refetchCategories();
+    closeCategoryModal();
+  };
+
+  const getCategoryName = (categoryId: string) => {
+    return categories?.find(c => c.id === categoryId)?.name || 'Sem Categoria';
   };
 
   return (
@@ -72,7 +108,7 @@ const Products: React.FC = () => {
       <div className="flex justify-between items-center">
         <h1 className="text-3xl font-bold text-text-primary">Gerenciamento de Produtos</h1>
         {isAdmin && (
-          <Button onClick={() => openModal()}><PlusIcon className="h-5 w-5 mr-2"/>Adicionar Produto</Button>
+          <Button onClick={() => openProductModal()}><PlusIcon className="h-5 w-5 mr-2"/>Adicionar Produto</Button>
         )}
       </div>
       
@@ -95,14 +131,42 @@ const Products: React.FC = () => {
                         products?.map(product => (
                             <tr key={product.id} className="bg-surface-card border-b hover:bg-surface-main/50">
                                 <td className="px-6 py-4 font-medium text-text-primary whitespace-nowrap">{product.name}</td>
-                                <td className="px-6 py-4">{product.category}</td>
+                                <td className="px-6 py-4">{getCategoryName(product.categoryId)}</td>
                                 <td className="px-6 py-4">{product.price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
-                                <td className={`px-6 py-4 font-semibold ${product.stock <= product.lowStockThreshold ? 'text-red-500' : 'text-green-600'}`}>
-                                    {product.stock}
+                                <td className="px-6 py-4">
+                                  <div className={`flex items-center justify-start font-semibold ${product.stock <= product.lowStockThreshold ? 'text-red-500' : 'text-green-600'}`}>
+                                    {isAdmin ? (
+                                      <>
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          className="p-1 h-6 w-6 disabled:opacity-50"
+                                          onClick={() => handleStockChange(product.id, product.stock - 1)}
+                                          disabled={!!isUpdatingStock}
+                                        >
+                                          <MinusCircleIcon className="h-5 w-5" />
+                                        </Button>
+                                        <span className="w-10 text-center tabular-nums">
+                                          {isUpdatingStock === product.id ? <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-gray-400 mx-auto"></div> : product.stock}
+                                        </span>
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          className="p-1 h-6 w-6 disabled:opacity-50"
+                                          onClick={() => handleStockChange(product.id, product.stock + 1)}
+                                          disabled={!!isUpdatingStock}
+                                        >
+                                          <PlusCircleIcon className="h-5 w-5" />
+                                        </Button>
+                                      </>
+                                    ) : (
+                                      <span className="tabular-nums">{product.stock}</span>
+                                    )}
+                                  </div>
                                 </td>
                                 {isAdmin && (
                                     <td className="px-6 py-4 text-right">
-                                        <Button variant="ghost" size="sm" onClick={() => openModal(product)}>
+                                        <Button variant="ghost" size="sm" onClick={() => openProductModal(product)}>
                                             <EditIcon className="h-4 w-4"/>
                                         </Button>
                                     </td>
@@ -115,55 +179,75 @@ const Products: React.FC = () => {
         </div>
       </div>
 
+      {/* Product Add/Edit Modal */}
       {isAdmin && isModalOpen && (
-        <Modal isOpen={isModalOpen} onClose={closeModal} title={editingProduct?.id ? 'Editar Produto' : 'Adicionar Produto'}>
+        <Modal isOpen={isModalOpen} onClose={closeProductModal} title={editingProduct?.id ? 'Editar Produto' : 'Adicionar Produto'}>
             <div className="space-y-4">
-            <Input name="name" label="Nome do Produto" value={editingProduct?.name || ''} onChange={handleInputChange} />
-            <Input name="category" label="Categoria" value={editingProduct?.category || ''} onChange={handleInputChange} />
+            <Input name="name" label="Nome do Produto" value={editingProduct?.name || ''} onChange={handleProductInputChange} />
             
+            <div>
+              <label htmlFor="categoryId" className="block text-sm font-medium text-text-secondary mb-1">Categoria</label>
+              <div className="flex gap-2">
+                <select id="categoryId" name="categoryId" value={editingProduct?.categoryId || ''} onChange={handleProductInputChange} className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-brand-primary focus:border-transparent transition bg-white">
+                  {categories?.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
+                </select>
+                <Button variant="secondary" onClick={() => openCategoryModal()}>Gerenciar</Button>
+              </div>
+            </div>
+
             <div className="relative">
                 <label htmlFor="description" className="block text-sm font-medium text-text-secondary mb-1">Descrição</label>
-                <textarea
-                    id="description"
-                    name="description"
-                    rows={3}
-                    className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-brand-primary focus:border-transparent transition"
-                    value={editingProduct?.description || ''}
-                    onChange={handleInputChange}
-                />
-                <Button 
-                    variant="ghost" 
-                    size="sm" 
-                    className="absolute top-0 right-0 mt-1 mr-1" 
-                    onClick={handleGenerateDescription} 
-                    isLoading={isGeneratingDesc}>
+                <textarea id="description" name="description" rows={3} className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-brand-primary focus:border-transparent transition" value={editingProduct?.description || ''} onChange={handleProductInputChange}/>
+                <Button variant="ghost" size="sm" className="absolute top-0 right-0 mt-1 mr-1" onClick={handleGenerateDescription} isLoading={isGeneratingDesc}>
                     <SparklesIcon className="h-4 w-4 mr-1"/> Gerar com IA
                 </Button>
             </div>
             
             <div className="grid grid-cols-2 gap-4">
-                <Input name="price" label="Preço" type="number" value={String(editingProduct?.price || '')} onChange={handleInputChange} />
-                <Input name="barcode" label="Código de Barras" value={editingProduct?.barcode || ''} onChange={handleInputChange} />
+                <Input name="price" label="Preço" type="number" value={String(editingProduct?.price || '')} onChange={handleProductInputChange} />
+                <Input name="barcode" label="Código de Barras" value={editingProduct?.barcode || ''} onChange={handleProductInputChange} />
             </div>
             <div className="grid grid-cols-2 gap-4">
-                <Input name="stock" label="Estoque" type="number" value={String(editingProduct?.stock || '')} onChange={handleInputChange} />
-                <Input name="lowStockThreshold" label="Alerta de Estoque Baixo" type="number" value={String(editingProduct?.lowStockThreshold || '')} onChange={handleInputChange} />
+                <Input name="stock" label="Estoque" type="number" value={String(editingProduct?.stock || '')} onChange={handleProductInputChange} />
+                <Input name="lowStockThreshold" label="Alerta de Estoque Baixo" type="number" value={String(editingProduct?.lowStockThreshold || '')} onChange={handleProductInputChange} />
             </div>
-
             <div className="pt-4 mt-4 border-t">
                 <h4 className="text-md font-semibold text-text-primary mb-3">Dados Fiscais</h4>
                 <div className="grid grid-cols-2 gap-4">
-                <Input name="ncm" label="NCM" value={editingProduct?.ncm || ''} onChange={handleInputChange} placeholder="ex: 0901.21.00"/>
-                <Input name="cest" label="CEST" value={editingProduct?.cest || ''} onChange={handleInputChange} placeholder="ex: 17.099.00"/>
-                <Input name="cfop" label="CFOP (Padrão)" value={editingProduct?.cfop || ''} onChange={handleInputChange} placeholder="ex: 5102"/>
-                <Input name="origin" label="Origem" value={editingProduct?.origin || ''} onChange={handleInputChange} placeholder="ex: Nacional"/>
+                    <Input name="ncm" label="NCM" value={editingProduct?.ncm || ''} onChange={handleProductInputChange} placeholder="ex: 0901.21.00"/>
+                    <Input name="cest" label="CEST" value={editingProduct?.cest || ''} onChange={handleProductInputChange} placeholder="ex: 17.099.00"/>
+                    <Input name="cfop" label="CFOP (Padrão)" value={editingProduct?.cfop || ''} onChange={handleProductInputChange} placeholder="ex: 5102"/>
+                    <Input name="origin" label="Origem" value={editingProduct?.origin || ''} onChange={handleProductInputChange} placeholder="ex: Nacional"/>
                 </div>
             </div>
-
             <div className="flex justify-end gap-3 mt-6">
-                <Button variant="secondary" onClick={closeModal}>Cancelar</Button>
-                <Button onClick={handleSave}>Salvar</Button>
+                <Button variant="secondary" onClick={closeProductModal}>Cancelar</Button>
+                <Button onClick={handleProductSave}>Salvar</Button>
             </div>
+            </div>
+        </Modal>
+      )}
+
+      {/* Category Management Modal */}
+      {isAdmin && isCategoryModalOpen && (
+        <Modal isOpen={isCategoryModalOpen} onClose={closeCategoryModal} title="Gerenciar Categorias">
+            <div className="space-y-4">
+                <h4 className="font-semibold">Categorias Existentes</h4>
+                <ul className="max-h-40 overflow-y-auto space-y-2 border p-2 rounded-md">
+                    {categories?.map(cat => (
+                        <li key={cat.id} className="flex justify-between items-center p-2 bg-gray-50 rounded">
+                            <span>{cat.name}</span>
+                            <Button variant="ghost" size="sm" onClick={() => openCategoryModal(cat)}><EditIcon className="h-4 w-4"/></Button>
+                        </li>
+                    ))}
+                </ul>
+                <div className="pt-4 border-t">
+                    <h4 className="font-semibold mb-2">{editingCategory?.id ? 'Editar Categoria' : 'Adicionar Nova Categoria'}</h4>
+                    <div className="flex gap-2">
+                        <Input name="name" placeholder="Nome da categoria" value={editingCategory?.name || ''} onChange={e => setEditingCategory({...editingCategory, name: e.target.value})} />
+                        <Button onClick={handleCategorySave}>{editingCategory?.id ? 'Salvar' : 'Adicionar'}</Button>
+                    </div>
+                </div>
             </div>
         </Modal>
       )}

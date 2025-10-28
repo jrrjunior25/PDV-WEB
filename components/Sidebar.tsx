@@ -1,7 +1,7 @@
 import React from 'react';
 import { Page, User } from '../types';
 import { useAuth } from '../auth/AuthContext';
-import { HomeIcon, ShoppingCartIcon, PackageIcon, BarChart3Icon, UsersIcon, SettingsIcon, LogOutIcon } from './icons/Icon';
+import { HomeIcon, ShoppingCartIcon, PackageIcon, BarChart3Icon, UsersIcon, SettingsIcon, LogOutIcon, TruckIcon, Building2Icon, ClipboardCheckIcon, FileTextIcon } from './icons/Icon';
 
 interface SidebarProps {
   currentPage: Page;
@@ -16,7 +16,11 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
     { id: 'pos', label: 'PDV (Caixa)', icon: ShoppingCartIcon, roles: ['administrador', 'vendedor', 'caixa'] },
     { id: 'products', label: 'Produtos', icon: PackageIcon, roles: ['administrador', 'vendedor'] },
     { id: 'sales', label: 'Vendas', icon: BarChart3Icon, roles: ['administrador', 'vendedor'] },
+    { id: 'deliveries', label: 'Entregas', icon: TruckIcon, roles: ['administrador', 'vendedor'] },
     { id: 'customers', label: 'Clientes', icon: UsersIcon, roles: ['administrador', 'vendedor'] },
+    { id: 'suppliers', label: 'Fornecedores', icon: Building2Icon, roles: ['administrador'] },
+    { id: 'accountsPayable', label: 'Contas a Pagar', icon: ClipboardCheckIcon, roles: ['administrador'] },
+    { id: 'reports', label: 'Relatórios', icon: FileTextIcon, roles: ['administrador'] },
     { id: 'settings', label: 'Configurações', icon: SettingsIcon, roles: ['administrador'] },
   ];
   

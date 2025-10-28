@@ -9,7 +9,16 @@ interface ChartProps {
 
 const COLORS = ['#1E40AF', '#1D4ED8', '#3B82F6', '#60A5FA', '#93C5FD'];
 
-const Chart: React.FC<ChartProps> = ({ data, type = 'bar' }) => {
+const Chart = ({ data, type = 'bar' }: ChartProps) => {
+  // FIX: Tornou a função de label mais robusta para lidar com props inesperadas da biblioteca recharts.
+  const customLabel = (props: any) => {
+    if (!props || props.name === undefined || props.percent === undefined) {
+      return '';
+    }
+    const { name, percent } = props;
+    return `${name} ${((percent ?? 0) * 100).toFixed(0)}%`;
+  };
+
   if (type === 'pie') {
     return (
       <div style={{ width: '100%', height: 300 }}>
@@ -24,8 +33,7 @@ const Chart: React.FC<ChartProps> = ({ data, type = 'bar' }) => {
               fill="#8884d8"
               dataKey="value"
               nameKey="name"
-              // FIX: Handle cases where `percent` might be undefined to prevent arithmetic errors.
-              label={({ name, percent }) => `${name} ${((percent ?? 0) * 100).toFixed(0)}%`}
+              label={customLabel}
             >
               {data.map((entry, index) => (
                 <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />

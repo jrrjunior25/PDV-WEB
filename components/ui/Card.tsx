@@ -1,4 +1,3 @@
-
 import React from 'react';
 
 interface CardProps {
@@ -8,7 +7,7 @@ interface CardProps {
   isWarning?: boolean;
 }
 
-const Card: React.FC<CardProps> = ({ title, value, icon: Icon, isWarning = false }) => {
+const Card = ({ title, value, icon: Icon, isWarning = false }: CardProps) => {
   return (
     <div className="bg-surface-card p-6 rounded-lg shadow-sm flex items-center justify-between">
       <div>

@@ -4,7 +4,7 @@ import Input from './ui/Input';
 import Button from './ui/Button';
 import { ShoppingCartIcon, AlertTriangleIcon } from './icons/Icon';
 
-const Login: React.FC = () => {
+const Login = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);

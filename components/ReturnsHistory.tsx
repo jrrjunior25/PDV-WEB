@@ -4,7 +4,7 @@ import { useMockApi } from '../hooks/useMockApi';
 import { Return } from '../types';
 import { ChevronDownIcon, ChevronUpIcon } from './icons/Icon';
 
-const ReturnsHistory: React.FC = () => {
+const ReturnsHistory = () => {
   const { data: returns, loading } = useMockApi<Return[]>(api.getReturns);
   const [expandedReturnId, setExpandedReturnId] = useState<string | null>(null);
 

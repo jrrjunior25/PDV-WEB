@@ -13,10 +13,20 @@ import AccountsPayable from './AccountsPayable';
 import Reports from './Reports';
 import ReturnsHistory from './ReturnsHistory';
 import Purchases from './Purchases';
+import { useAuth } from '../auth/AuthContext';
 
 
-const Layout: React.FC = () => {
-  const [currentPage, setCurrentPage] = useState<Page>('dashboard');
+const Layout = () => {
+  const { user } = useAuth();
+
+  const getInitialPage = (): Page => {
+    if (user?.role === 'caixa') {
+      return 'pos';
+    }
+    return 'dashboard';
+  };
+  
+  const [currentPage, setCurrentPage] = useState<Page>(getInitialPage());
 
   // Função para renderizar o componente da página atual
   const renderPage = () => {

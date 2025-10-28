@@ -5,8 +5,17 @@ import { Customer, Sale, StoreCredit } from '../types';
 import Button from './ui/Button';
 import { PlusIcon, TicketIcon } from './icons/Icon';
 import Modal from './ui/Modal';
+import { useAuth } from '../auth/AuthContext';
 
-const CustomerDetailModal: React.FC<{ customer: Customer; sales: Sale[]; storeCredits: StoreCredit[]; isOpen: boolean; onClose: () => void; }> = ({ customer, sales, storeCredits, isOpen, onClose }) => {
+interface CustomerDetailModalProps {
+  customer: Customer;
+  sales: Sale[];
+  storeCredits: StoreCredit[];
+  isOpen: boolean;
+  onClose: () => void;
+}
+
+const CustomerDetailModal = ({ customer, sales, storeCredits, isOpen, onClose }: CustomerDetailModalProps) => {
     const customerSales = useMemo(() => sales.filter(s => s.customerId === customer.id), [sales, customer.id]);
     const customerCredits = useMemo(() => storeCredits.filter(c => c.customerId === customer.id && c.status === 'Active'), [storeCredits, customer.id]);
     
@@ -55,7 +64,8 @@ const CustomerDetailModal: React.FC<{ customer: Customer; sales: Sale[]; storeCr
     );
 };
 
-const Customers: React.FC = () => {
+const Customers = () => {
+  const { user } = useAuth();
   const { data: customers, loading } = useMockApi<Customer[]>(api.getCustomers);
   const { data: sales } = useMockApi<Sale[]>(api.getSales);
   const { data: storeCredits } = useMockApi<StoreCredit[]>(api.getStoreCredits);
@@ -67,9 +77,11 @@ const Customers: React.FC = () => {
     <div className="space-y-6">
         <div className="flex justify-between items-center">
             <h1 className="text-3xl font-bold text-text-primary">Clientes</h1>
-            <Button onClick={() => alert('Funcionalidade de adicionar cliente a ser implementada.')}>
-                <PlusIcon className="h-5 w-5 mr-2"/> Adicionar Cliente
-            </Button>
+            {user?.role !== 'caixa' && (
+              <Button onClick={() => alert('Funcionalidade de adicionar cliente a ser implementada.')}>
+                  <PlusIcon className="h-5 w-5 mr-2"/> Adicionar Cliente
+              </Button>
+            )}
         </div>
       
         <div className="bg-surface-card rounded-lg shadow-sm overflow-hidden">

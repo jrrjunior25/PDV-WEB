@@ -5,7 +5,7 @@ interface QRCodeProps {
   size?: number;
 }
 
-const QRCode: React.FC<QRCodeProps> = ({ value, size = 160 }) => {
+const QRCode = ({ value, size = 160 }: QRCodeProps) => {
   if (!value) {
     return null;
   }

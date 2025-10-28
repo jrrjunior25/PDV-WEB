@@ -8,17 +8,17 @@ interface SidebarProps {
   setCurrentPage: (page: Page) => void;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
+const Sidebar = ({ currentPage, setCurrentPage }: SidebarProps) => {
   const { user, logout } = useAuth();
 
   const navItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: HomeIcon, roles: ['administrador', 'vendedor', 'caixa'] },
+    { id: 'dashboard', label: 'Dashboard', icon: HomeIcon, roles: ['administrador', 'vendedor'] },
     { id: 'pos', label: 'PDV (Caixa)', icon: ShoppingCartIcon, roles: ['administrador', 'vendedor', 'caixa'] },
-    { id: 'products', label: 'Produtos', icon: PackageIcon, roles: ['administrador', 'vendedor'] },
+    { id: 'products', label: 'Produtos', icon: PackageIcon, roles: ['administrador', 'vendedor', 'caixa'] },
     { id: 'sales', label: 'Vendas', icon: BarChart3Icon, roles: ['administrador', 'vendedor'] },
     { id: 'returns', label: 'Devoluções', icon: Undo2Icon, roles: ['administrador', 'vendedor'] },
     { id: 'deliveries', label: 'Entregas', icon: TruckIcon, roles: ['administrador', 'vendedor'] },
-    { id: 'customers', label: 'Clientes', icon: UsersIcon, roles: ['administrador', 'vendedor'] },
+    { id: 'customers', label: 'Clientes', icon: UsersIcon, roles: ['administrador', 'vendedor', 'caixa'] },
     { id: 'suppliers', label: 'Fornecedores', icon: Building2Icon, roles: ['administrador'] },
     { id: 'purchases', label: 'Compras', icon: ArchiveIcon, roles: ['administrador'] },
     { id: 'accountsPayable', label: 'Contas a Pagar', icon: ClipboardCheckIcon, roles: ['administrador'] },

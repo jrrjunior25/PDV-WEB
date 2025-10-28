@@ -8,7 +8,7 @@ import Input from './ui/Input';
 import { useAuth } from '../auth/AuthContext';
 import { PlusIcon } from './icons/Icon';
 
-const AccountsPayable: React.FC = () => {
+const AccountsPayable = () => {
   const { data: accounts, loading, refetch } = useMockApi<AccountPayable[]>(api.getAccountsPayable);
   const { data: suppliers } = useMockApi<Supplier[]>(api.getSuppliers);
   const [isModalOpen, setModalOpen] = useState(false);
@@ -17,7 +17,7 @@ const AccountsPayable: React.FC = () => {
   const isAdmin = user?.role === 'administrador';
 
   const openModal = () => {
-    setNewAccount({ description: '', amount: 0, dueDate: '', supplierId: suppliers?.[0]?.id, status: 'Pendente' });
+    setNewAccount({ description: '', amount: 0, dueDate: '', supplierId: suppliers?.[0]?.id || '', status: 'Pendente' });
     setModalOpen(true);
   };
 
@@ -28,7 +28,8 @@ const AccountsPayable: React.FC = () => {
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
-    setNewAccount(prev => ({ ...prev, [name]: name === 'amount' ? parseFloat(value) : value }));
+    // FIX: Safely parse float to avoid NaN issues when the input is cleared.
+    setNewAccount(prev => ({ ...prev, [name]: name === 'amount' ? parseFloat(value) || 0 : value }));
   };
 
   const handleSave = async () => {
@@ -111,7 +112,7 @@ const AccountsPayable: React.FC = () => {
           <div className="space-y-4">
             <div>
                 <label htmlFor="supplierId" className="block text-sm font-medium text-text-secondary mb-1">Fornecedor</label>
-                <select id="supplierId" name="supplierId" value={newAccount.supplierId} onChange={handleInputChange} className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-brand-primary focus:border-transparent transition bg-white">
+                <select id="supplierId" name="supplierId" value={newAccount.supplierId || ''} onChange={handleInputChange} className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-brand-primary focus:border-transparent transition bg-white">
                   {suppliers?.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                 </select>
             </div>

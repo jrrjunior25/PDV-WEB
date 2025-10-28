@@ -8,7 +8,7 @@ import Input from './ui/Input';
 import { useAuth } from '../auth/AuthContext';
 import { PlusIcon, EditIcon } from './icons/Icon';
 
-const Suppliers: React.FC = () => {
+const Suppliers = () => {
   const { data: suppliers, loading, refetch } = useMockApi<Supplier[]>(api.getSuppliers);
   const [isModalOpen, setModalOpen] = useState(false);
   const [editingSupplier, setEditingSupplier] = useState<Partial<Supplier> | null>(null);

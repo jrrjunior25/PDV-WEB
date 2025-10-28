@@ -15,7 +15,15 @@ const statusStyles: { [key in Sale['status']]: string } = {
   'Pending Payment': 'bg-blue-100 text-blue-800'
 };
 
-const ReturnModal: React.FC<{ sale: Sale; isOpen: boolean; onClose: () => void; onReturnProcessed: () => void; user: User | null; }> = ({ sale, isOpen, onClose, onReturnProcessed, user }) => {
+interface ReturnModalProps {
+  sale: Sale;
+  isOpen: boolean;
+  onClose: () => void;
+  onReturnProcessed: () => void;
+  user: User | null;
+}
+
+const ReturnModal = ({ sale, isOpen, onClose, onReturnProcessed, user }: ReturnModalProps) => {
   const [itemsToReturn, setItemsToReturn] = useState<{ [productId: string]: number }>({});
   const [reason, setReason] = useState('');
   const [outcome, setOutcome] = useState<'Refund' | 'Store Credit'>('Store Credit');
@@ -84,8 +92,8 @@ const ReturnModal: React.FC<{ sale: Sale; isOpen: boolean; onClose: () => void; 
                 <span className="text-sm">{item.productName}</span>
                 <div className="flex items-center gap-2">
                   <Input type="number" className="w-20 text-center"
-                    value={itemsToReturn[item.productId] || 0}
-                    onChange={(e) => handleQuantityChange(item.productId, parseInt(e.target.value), item.returnableQuantity)}
+                    value={String(itemsToReturn[item.productId] || 0)}
+                    onChange={(e) => handleQuantityChange(item.productId, parseInt(e.target.value) || 0, item.returnableQuantity)}
                     max={item.returnableQuantity} min={0}
                   />
                   <span className="text-xs text-text-muted">/ {item.returnableQuantity}</span>
@@ -118,7 +126,7 @@ const ReturnModal: React.FC<{ sale: Sale; isOpen: boolean; onClose: () => void; 
   );
 };
 
-const SalesHistory: React.FC = () => {
+const SalesHistory = () => {
   const { data: sales, loading, refetch } = useMockApi<Sale[]>(api.getSales);
   const [expandedSaleId, setExpandedSaleId] = useState<string | null>(null);
   const [returnModalOpen, setReturnModalOpen] = useState(false);

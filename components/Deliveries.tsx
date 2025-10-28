@@ -13,8 +13,12 @@ const statusStyles: { [key in Delivery['status']]: string } = {
   Cancelada: 'bg-red-100 text-red-800',
 };
 
+interface TrackingMapProps {
+  history: Delivery['trackingHistory'];
+}
+
 // Simple map simulation component
-const TrackingMap: React.FC<{ history: Delivery['trackingHistory'] }> = ({ history }) => {
+const TrackingMap = ({ history }: TrackingMapProps) => {
     const [position, setPosition] = useState(0);
 
     React.useEffect(() => {
@@ -43,7 +47,7 @@ const TrackingMap: React.FC<{ history: Delivery['trackingHistory'] }> = ({ histo
     );
 };
 
-const Deliveries: React.FC = () => {
+const Deliveries = () => {
   const { data: deliveries, loading, refetch } = useMockApi<Delivery[]>(api.getDeliveries);
   const [selectedDelivery, setSelectedDelivery] = useState<Delivery | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);

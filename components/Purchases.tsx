@@ -1,11 +1,13 @@
-import React, { useState, useMemo } from 'react';
+
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { api } from '../services/api';
 import { useMockApi } from '../hooks/useMockApi';
 import { PurchaseOrder, Supplier, Product, PurchaseOrderItem } from '../types';
 import Button from './ui/Button';
 import Modal from './ui/Modal';
 import Input from './ui/Input';
-import { PlusIcon, SearchIcon, Trash2Icon } from './icons/Icon';
+import { PlusIcon, SearchIcon, Trash2Icon, UploadCloudIcon } from './icons/Icon';
+import ImportXmlModal from './ImportXmlModal';
 
 const statusStyles: { [key in PurchaseOrder['status']]: string } = {
   Pendente: 'bg-yellow-100 text-yellow-800',
@@ -13,10 +15,31 @@ const statusStyles: { [key in PurchaseOrder['status']]: string } = {
   Recebido: 'bg-green-100 text-green-800',
 };
 
-const PurchaseOrderModal: React.FC<{ isOpen: boolean; onClose: () => void; onSave: () => void; suppliers: Supplier[]; products: Product[]; }> = ({ isOpen, onClose, onSave, suppliers, products }) => {
-    const [supplierId, setSupplierId] = useState<string>(suppliers[0]?.id || '');
+interface PurchaseOrderModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onSave: () => void;
+  suppliers: Supplier[];
+  products: Product[];
+}
+
+const PurchaseOrderModal = ({ isOpen, onClose, onSave, suppliers, products }: PurchaseOrderModalProps) => {
+    const [supplierId, setSupplierId] = useState<string>('');
     const [items, setItems] = useState<PurchaseOrderItem[]>([]);
     const [searchTerm, setSearchTerm] = useState('');
+
+    useEffect(() => {
+        // Set default supplier when modal opens and suppliers are loaded
+        if (isOpen && suppliers && suppliers.length > 0 && !supplierId) {
+            setSupplierId(suppliers[0].id);
+        }
+        // Reset state when modal closes
+        if (!isOpen) {
+            setSupplierId('');
+            setItems([]);
+            setSearchTerm('');
+        }
+    }, [isOpen, suppliers, supplierId]);
 
     const filteredProducts = useMemo(() => {
         if (!searchTerm) return [];
@@ -73,7 +96,7 @@ const PurchaseOrderModal: React.FC<{ isOpen: boolean; onClose: () => void; onSav
                 <div>
                     <label htmlFor="supplierId" className="block text-sm font-medium text-text-secondary mb-1">Fornecedor</label>
                     <select id="supplierId" value={supplierId} onChange={e => setSupplierId(e.target.value)} className="w-full p-2 border border-gray-300 rounded-md bg-white">
-                        {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                        {suppliers?.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                     </select>
                 </div>
                 
@@ -90,8 +113,8 @@ const PurchaseOrderModal: React.FC<{ isOpen: boolean; onClose: () => void; onSav
                     {items.map(item => (
                         <div key={item.productId} className="grid grid-cols-12 gap-2 items-center">
                             <span className="col-span-4 text-sm truncate">{item.productName}</span>
-                            <Input type="number" className="col-span-2" value={item.quantityOrdered} onChange={e => handleItemChange(item.productId, 'quantityOrdered', parseInt(e.target.value))} />
-                            <Input type="number" className="col-span-2" value={item.costPrice} onChange={e => handleItemChange(item.productId, 'costPrice', parseFloat(e.target.value))} />
+                            <Input type="number" className="col-span-2" value={String(item.quantityOrdered)} onChange={e => handleItemChange(item.productId, 'quantityOrdered', parseInt(e.target.value) || 0)} />
+                            <Input type="number" className="col-span-2" value={String(item.costPrice)} onChange={e => handleItemChange(item.productId, 'costPrice', parseFloat(e.target.value) || 0)} />
                             <span className="col-span-3 text-right text-sm font-semibold">{item.totalCost.toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'})}</span>
                             <Button variant="danger" size="sm" className="col-span-1 p-1 h-7" onClick={() => handleRemoveItem(item.productId)}><Trash2Icon className="h-4 w-4"/></Button>
                         </div>
@@ -108,7 +131,14 @@ const PurchaseOrderModal: React.FC<{ isOpen: boolean; onClose: () => void; onSav
     );
 };
 
-const ReceiveStockModal: React.FC<{ po: PurchaseOrder; isOpen: boolean; onClose: () => void; onSave: () => void; }> = ({ po, isOpen, onClose, onSave }) => {
+interface ReceiveStockModalProps {
+  po: PurchaseOrder;
+  isOpen: boolean;
+  onClose: () => void;
+  onSave: () => void;
+}
+
+const ReceiveStockModal = ({ po, isOpen, onClose, onSave }: ReceiveStockModalProps) => {
     const [receivedItems, setReceivedItems] = useState<{ [productId: string]: number }>({});
     
     const handleQuantityChange = (productId: string, quantity: number, maxQuantity: number) => {
@@ -135,8 +165,8 @@ const ReceiveStockModal: React.FC<{ po: PurchaseOrder; isOpen: boolean; onClose:
                             <span className="text-sm">{item.productName}</span>
                             <div className="flex items-center gap-2">
                                 <Input type="number" className="w-20 text-center"
-                                    value={receivedItems[item.productId] || 0}
-                                    onChange={e => handleQuantityChange(item.productId, parseInt(e.target.value), item.quantityOrdered - item.quantityReceived)}
+                                    value={String(receivedItems[item.productId] || 0)}
+                                    onChange={e => handleQuantityChange(item.productId, parseInt(e.target.value) || 0, item.quantityOrdered - item.quantityReceived)}
                                 />
                                 <span className="text-xs text-text-muted">/ {item.quantityOrdered - item.quantityReceived} pendente</span>
                             </div>
@@ -153,7 +183,7 @@ const ReceiveStockModal: React.FC<{ po: PurchaseOrder; isOpen: boolean; onClose:
 };
 
 
-const Purchases: React.FC = () => {
+const Purchases = () => {
   const { data: purchaseOrders, loading, refetch } = useMockApi<PurchaseOrder[]>(api.getPurchaseOrders);
   const { data: suppliers } = useMockApi<Supplier[]>(api.getSuppliers);
   const { data: products } = useMockApi<Product[]>(api.getProducts);
@@ -161,6 +191,80 @@ const Purchases: React.FC = () => {
   const [isPoModalOpen, setIsPoModalOpen] = useState(false);
   const [isReceiveModalOpen, setIsReceiveModalOpen] = useState(false);
   const [selectedPo, setSelectedPo] = useState<PurchaseOrder | null>(null);
+  
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [xmlData, setXmlData] = useState<any>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (e) => {
+          try {
+              const xmlString = e.target?.result as string;
+              const parser = new DOMParser();
+              const xmlDoc = parser.parseFromString(xmlString, "application/xml");
+
+              if (xmlDoc.querySelector("parsererror")) {
+                  throw new Error("Arquivo XML inválido ou mal formatado.");
+              }
+
+              const getText = (selector: string, parent: Element | Document = xmlDoc) => parent.querySelector(selector)?.textContent || '';
+
+              const emit = xmlDoc.querySelector('emit');
+              if (!emit) throw new Error("Não foi possível encontrar os dados do emitente na NF-e.");
+              
+              const supplier = {
+                  cnpj: getText('CNPJ', emit),
+                  name: getText('xNome', emit),
+              };
+
+              const items: any[] = [];
+              xmlDoc.querySelectorAll('det').forEach(det => {
+                  const prod = det.querySelector('prod');
+                  if (!prod) return;
+                  const item = {
+                      name: getText('xProd', prod),
+                      quantity: parseFloat(getText('qCom', prod) || '0'),
+                      costPrice: parseFloat(getText('vUnCom', prod) || '0'),
+                      barcode: getText('cEAN', prod) || getText('cProd', prod),
+                      ncm: getText('NCM', prod),
+                      cfop: getText('CFOP', prod),
+                      description: '',
+                      price: parseFloat(getText('vUnCom', prod) || '0') * 1.5, // Sugere preço de venda com 50% de margem
+                      stock: 0,
+                      lowStockThreshold: 10,
+                      categoryId: '',
+                      imageUrl: `https://picsum.photos/seed/${getText('cProd', prod)}/400/400`,
+                      origin: getText('orig', prod),
+                      cest: getText('CEST', prod),
+                  };
+                  items.push(item);
+              });
+
+              if (items.length === 0) {
+                throw new Error("Nenhum produto encontrado no arquivo XML.");
+              }
+
+              const totalAmount = parseFloat(getText('total > ICMSTot > vNF') || '0');
+
+              setXmlData({ supplier, items, totalAmount });
+              setIsImportModalOpen(true);
+
+          } catch (error: any) {
+              alert(`Erro ao processar o arquivo XML: ${error.message}`);
+          } finally {
+            if(event.target) event.target.value = '';
+          }
+      };
+      reader.readAsText(file);
+  };
+
+  const handleImportClick = () => {
+      fileInputRef.current?.click();
+  };
 
   const handleOpenReceiveModal = (po: PurchaseOrder) => {
     setSelectedPo(po);
@@ -176,7 +280,11 @@ const Purchases: React.FC = () => {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h1 className="text-3xl font-bold text-text-primary">Pedidos de Compra</h1>
-        <Button onClick={() => setIsPoModalOpen(true)}><PlusIcon className="h-5 w-5 mr-2"/>Novo Pedido</Button>
+        <div className="flex gap-2">
+            <Button variant="secondary" onClick={handleImportClick}><UploadCloudIcon className="h-5 w-5 mr-2"/>Importar XML da NF-e</Button>
+            <Button onClick={() => setIsPoModalOpen(true)}><PlusIcon className="h-5 w-5 mr-2"/>Novo Pedido</Button>
+            <input type="file" ref={fileInputRef} onChange={handleFileChange} accept=".xml" style={{ display: 'none' }} />
+        </div>
       </div>
 
       <div className="bg-surface-card rounded-lg shadow-sm overflow-hidden">
@@ -233,6 +341,17 @@ const Purchases: React.FC = () => {
             isOpen={isReceiveModalOpen}
             onClose={handleCloseReceiveModal}
             onSave={refetch}
+        />
+      )}
+      {isImportModalOpen && xmlData && products && (
+        <ImportXmlModal
+            isOpen={isImportModalOpen}
+            onClose={() => setIsImportModalOpen(false)}
+            xmlData={xmlData}
+            allProducts={products}
+            onImportSuccess={() => {
+                refetch();
+            }}
         />
       )}
     </div>

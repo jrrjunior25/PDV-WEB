@@ -6,7 +6,7 @@ import Input from './ui/Input';
 import { useAuth } from '../auth/AuthContext';
 import { AlertTriangleIcon } from './icons/Icon';
 
-const Settings: React.FC = () => {
+const Settings = () => {
   const [settings, setSettings] = useState<Partial<SystemSettings>>({});
   const [loading, setLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);

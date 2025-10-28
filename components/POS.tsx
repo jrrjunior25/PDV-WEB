@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useReducer, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useReducer, useEffect, useRef, useCallback } from 'react';
 import { api } from '../services/api';
 import { useMockApi } from '../hooks/useMockApi';
 import { Product, SaleItem, Sale, SystemSettings, CashRegisterSession, Customer, StoreCredit } from '../types';
@@ -59,7 +59,34 @@ const cartReducer = (state: SaleItem[], action: CartAction): SaleItem[] => {
   }
 };
 
-const POS: React.FC = () => {
+// FIX: Helper function to robustly extract the city from an address string.
+const getCityFromAddress = (address: string | undefined): string => {
+    const defaultCity = 'SAO PAULO';
+    if (!address) return defaultCity;
+
+    const parts = address.split(',').map(p => p.trim());
+    
+    // Most reliable is the last part, which might contain "City - State"
+    if (parts.length > 0) {
+        const lastPart = parts[parts.length - 1];
+        const cityInLastPart = lastPart.split('-')[0].trim();
+        if (cityInLastPart && cityInLastPart.length > 2) { // Check if it's not just a state code
+            return cityInLastPart;
+        }
+    }
+
+    // If the above fails, try the second to last part
+    if (parts.length > 1) {
+        const potentialCity = parts[parts.length - 2];
+        if (potentialCity && potentialCity.length > 2) {
+             return potentialCity;
+        }
+    }
+    
+    return defaultCity; // Return a default if no valid city can be found.
+};
+
+const POS = () => {
   const { user } = useAuth();
   const { data: products, refetch: refetchProducts } = useMockApi<Product[]>(api.getProducts);
   const { data: settings } = useMockApi<SystemSettings>(api.getSettings);
@@ -94,18 +121,17 @@ const POS: React.FC = () => {
   const cartTotal = useMemo(() => cart.reduce((total, item) => total + item.totalPrice, 0), [cart]);
   const amountDue = useMemo(() => Math.max(0, cartTotal - appliedCredit), [cartTotal, appliedCredit]);
 
-  const fetchCashSession = async () => {
+  const fetchCashSession = useCallback(async () => {
     const session = await api.getCurrentCashRegisterSession();
     setCashSession(session);
     if(session){
         setIdentifyCustomerModalOpen(true);
     }
-  };
+  }, []);
   
   useEffect(() => {
     fetchCashSession();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [fetchCashSession]);
   
   useEffect(() => {
     if(cashSession && !activeCustomer) {
@@ -138,27 +164,46 @@ const POS: React.FC = () => {
   useEffect(() => {
     if (isPaymentModalOpen && paymentMethod === 'PIX' && settings && amountDue > 0) {
         const brCode = generatePixBrCode({
-            pixKey: settings.pixKey, recipientName: settings.companyName,
-            city: settings.address.split(',')[1]?.trim()?.split('-')[0]?.trim() || 'SAO PAULO',
-            amount: amountDue, txid: `SALE${Date.now()}`
+            pixKey: settings.pixKey,
+            recipientName: settings.companyName,
+            city: getCityFromAddress(settings.address),
+            amount: isNaN(amountDue) ? 0 : amountDue, // Extra safety check
+            txid: `SALE${Date.now()}`
         });
         setPixBrCode(brCode);
-    } else { setPixBrCode(null); }
+    } else {
+        setPixBrCode(null);
+    }
   }, [isPaymentModalOpen, paymentMethod, settings, amountDue]);
   
+
   const formatCurrency = (value: number | undefined) => (value ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  
+  const handleAddProduct = (product: Product) => {
+    if (product.stock > 0) {
+        dispatch({ type: 'ADD_ITEM', payload: { product, quantity: 1 } });
+        setSearchTerm('');
+        searchInputRef.current?.focus();
+    } else {
+        alert(`Produto "${product.name}" sem estoque.`);
+    }
+  };
+
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!searchTerm.trim() || !activeCustomer) return;
-    const foundProduct = products?.find(p => p.barcode === searchTerm || p.name.toLowerCase() === searchTerm.toLowerCase());
-    if (foundProduct) {
-        if(foundProduct.stock > 0) {
-            dispatch({ type: 'ADD_ITEM', payload: { product: foundProduct, quantity: 1 } });
-            setSearchTerm('');
-        } else { alert(`Produto "${foundProduct.name}" sem estoque.`); }
-    } else { alert('Produto não encontrado.'); }
-    searchInputRef.current?.focus();
+    
+    const lowerCaseSearchTerm = searchTerm.toLowerCase();
+    
+    // Prioritize exact barcode match, then partial name match
+    const product = products?.find(p => p.barcode === searchTerm || p.name.toLowerCase().includes(lowerCaseSearchTerm));
+    
+    if (product) {
+      handleAddProduct(product);
+    } else {
+      alert('Produto não encontrado.');
+    }
   };
 
   const startNewSale = () => {
@@ -248,8 +293,6 @@ const POS: React.FC = () => {
       }
   };
   
-  // FIX: Refactored function to fix a TypeScript error and use React state instead of direct DOM manipulation.
-  // The button's state is now derived from `saleCompleted`, which is updated here.
   const handleCreateDelivery = async () => {
     if(!saleCompleted || !saleCompleted.customerId || !activeCustomer?.address) return;
     setIsProcessing(true);
@@ -281,7 +324,7 @@ const POS: React.FC = () => {
     const [amount, setAmount] = useState(0);
     return (
       <div className="space-y-4">
-        <Input label="Valor de Abertura (Suprimento)" type="number" value={String(amount)} onChange={e => setAmount(parseFloat(e.target.value))} placeholder="R$ 0,00" autoFocus/>
+        <Input label="Valor de Abertura (Suprimento)" type="number" value={String(amount)} onChange={e => setAmount(parseFloat(e.target.value) || 0)} placeholder="R$ 0,00" autoFocus/>
         <div className="flex justify-end gap-3 mt-6">
           <Button variant="secondary" onClick={() => setIsCashManagerOpen(false)}>Cancelar</Button>
           <Button onClick={() => handleOpenCashRegister(amount)} isLoading={isProcessing}>Confirmar Abertura</Button>
@@ -295,7 +338,7 @@ const POS: React.FC = () => {
         <div className="space-y-3 p-4 border rounded-lg">
             <h4 className="font-semibold text-text-primary">Registrar Sangria (Retirada)</h4>
             <div className="flex items-center gap-3">
-                <Input label="Valor da Retirada" type="number" value={String(sangriaAmount)} onChange={e => setSangriaAmount(parseFloat(e.target.value))} className="flex-1"/>
+                <Input label="Valor da Retirada" type="number" value={String(sangriaAmount)} onChange={e => setSangriaAmount(parseFloat(e.target.value) || 0)} className="flex-1"/>
                 <Button onClick={handleRecordSangria} isLoading={isProcessing} disabled={sangriaAmount <= 0} className="self-end">Registrar</Button>
             </div>
         </div>
@@ -308,7 +351,7 @@ const POS: React.FC = () => {
                 <hr className="my-1"/>
                 <div className="flex justify-between font-bold text-base"><span>(=) Valor Esperado em Caixa:</span> <span>R$ {formatCurrency(closingReport?.expected)}</span></div>
             </div>
-             <Input label="Valor Contado em Caixa" type="number" placeholder="Digite o valor apurado" value={String(closingAmount ?? '')} onChange={e => setClosingAmount(parseFloat(e.target.value))}/>
+             <Input label="Valor Contado em Caixa" type="number" placeholder="Digite o valor apurado" value={String(closingAmount ?? '')} onChange={e => { const val = parseFloat(e.target.value); setClosingAmount(isNaN(val) ? undefined : val); }}/>
             {closingAmount !== undefined && closingReport && (
                  <div className={`flex justify-between font-bold text-lg p-3 rounded-md ${closingReport.difference === 0 ? 'bg-gray-100' : (closingReport.difference > 0 ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800')}`}>
                     <span>Diferença:</span>

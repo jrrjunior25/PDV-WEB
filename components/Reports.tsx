@@ -6,7 +6,7 @@ import Card from './ui/Card';
 import Chart from './ui/Chart';
 import { DollarSignIcon, ShoppingBagIcon, PackageIcon, BarChart3Icon, ChevronDownIcon, ChevronUpIcon } from './icons/Icon';
 
-const Reports: React.FC = () => {
+const Reports = () => {
   const { data: sales, loading: loadingSales } = useMockApi<Sale[]>(api.getSales);
   const { data: products, loading: loadingProducts } = useMockApi<Product[]>(api.getProducts);
   const { data: categories, loading: loadingCategories } = useMockApi<ProductCategory[]>(api.getProductCategories);

@@ -9,7 +9,7 @@ import { generateProductDescription } from '../services/geminiService';
 import { useAuth } from '../auth/AuthContext';
 import { PlusIcon, EditIcon, SparklesIcon, MinusCircleIcon, PlusCircleIcon } from './icons/Icon';
 
-const Products: React.FC = () => {
+const Products = () => {
   const { data: products, loading, refetch } = useMockApi<Product[]>(api.getProducts);
   const { data: categories, refetch: refetchCategories } = useMockApi<ProductCategory[]>(api.getProductCategories);
   const [isModalOpen, setModalOpen] = useState(false);
@@ -42,7 +42,11 @@ const Products: React.FC = () => {
   const handleProductInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     if (!editingProduct) return;
     const { name, value } = e.target;
-    setEditingProduct({ ...editingProduct, [name]: name === 'price' || name === 'costPrice' || name === 'stock' || name === 'lowStockThreshold' ? parseFloat(value) : value });
+    const numericFields = ['price', 'costPrice', 'stock', 'lowStockThreshold'];
+    setEditingProduct({ 
+      ...editingProduct, 
+      [name]: numericFields.includes(name) ? (parseFloat(value) || 0) : value 
+    });
   };
   
   const handleGenerateDescription = async () => {

@@ -59,6 +59,7 @@ export interface Sale {
   customerName?: string;
   deliveryId?: string; // ID da entrega associada
   status: 'Completed' | 'Partially Returned' | 'Fully Returned' | 'Pending Payment';
+  storeCreditAmountUsed?: number; // Valor pago com vale-crédito
   // Dados da NFC-e
   nfceAccessKey?: string;
   nfceQrCodeUrl?: string;
@@ -180,5 +181,6 @@ export interface CashRegisterSession {
   operatorName: string;
   salesSummary: { [key in Sale['paymentMethod']]?: number };
   totalSangrias: number;
+  totalStoreCreditUsed: number;
   notes?: string;
 }

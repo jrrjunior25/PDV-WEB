@@ -1,14 +1,14 @@
 import React, { useState, useMemo, useReducer, useEffect, useRef } from 'react';
 import { api } from '../services/api';
 import { useMockApi } from '../hooks/useMockApi';
-import { Product, SaleItem, Sale, SystemSettings, CashRegisterSession, Customer } from '../types';
+import { Product, SaleItem, Sale, SystemSettings, CashRegisterSession, Customer, StoreCredit } from '../types';
 import { useAuth } from '../auth/AuthContext';
 import { generatePixBrCode } from '../services/pixService';
 import Input from './ui/Input';
 import Button from './ui/Button';
 import Modal from './ui/Modal';
 import QRCode from './ui/QRCode';
-import { Trash2Icon, SearchIcon, PrinterIcon, CalculatorIcon, UserSearchIcon } from './icons/Icon';
+import { Trash2Icon, SearchIcon, PrinterIcon, CalculatorIcon, UserSearchIcon, TruckIcon, TicketIcon } from './icons/Icon';
 
 type CartAction =
   | { type: 'ADD_ITEM'; payload: { product: Product, quantity: number } }
@@ -63,6 +63,7 @@ const POS: React.FC = () => {
   const { user } = useAuth();
   const { data: products, refetch: refetchProducts } = useMockApi<Product[]>(api.getProducts);
   const { data: settings } = useMockApi<SystemSettings>(api.getSettings);
+  const { data: storeCredits, refetch: refetchCredits } = useMockApi<StoreCredit[]>(api.getStoreCredits);
   
   const [cashSession, setCashSession] = useState<CashRegisterSession | null | undefined>(undefined);
   
@@ -70,11 +71,13 @@ const POS: React.FC = () => {
   const [cart, dispatch] = useReducer(cartReducer, []);
   const [lastAddedItem, setLastAddedItem] = useState<SaleItem | null>(null);
   const [activeCustomer, setActiveCustomer] = useState<Customer | null>(null);
-  
-  const [isFinalizeModalOpen, setFinalizeModalOpen] = useState(false);
+  const [customerCredits, setCustomerCredits] = useState<StoreCredit[]>([]);
+
   const [isPaymentModalOpen, setPaymentModalOpen] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<Sale['paymentMethod']>('PIX');
   const [pixBrCode, setPixBrCode] = useState<string | null>(null);
+  const [appliedCredit, setAppliedCredit] = useState(0);
+
   const [isProcessing, setIsProcessing] = useState(false);
   const [saleCompleted, setSaleCompleted] = useState<Sale | null>(null);
 
@@ -87,6 +90,9 @@ const POS: React.FC = () => {
 
   const receiptRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+
+  const cartTotal = useMemo(() => cart.reduce((total, item) => total + item.totalPrice, 0), [cart]);
+  const amountDue = useMemo(() => Math.max(0, cartTotal - appliedCredit), [cartTotal, appliedCredit]);
 
   const fetchCashSession = async () => {
     const session = await api.getCurrentCashRegisterSession();
@@ -105,10 +111,14 @@ const POS: React.FC = () => {
     if(cashSession && !activeCustomer) {
         setIdentifyCustomerModalOpen(true);
     }
-  }, [cashSession, activeCustomer]);
+    if (activeCustomer && storeCredits) {
+        const credits = storeCredits.filter(c => c.customerId === activeCustomer.id && c.status === 'Active');
+        setCustomerCredits(credits);
+    } else {
+        setCustomerCredits([]);
+    }
+  }, [cashSession, activeCustomer, storeCredits]);
 
-  const cartTotal = useMemo(() => cart.reduce((total, item) => total + item.totalPrice, 0), [cart]);
-  
   const closingReport = useMemo(() => {
     if (!cashSession || !isCashManagerOpen) return null;
     const cashSales = cashSession.salesSummary['Dinheiro'] || 0;
@@ -126,15 +136,15 @@ const POS: React.FC = () => {
   }, [cart, products]);
 
   useEffect(() => {
-    if (isPaymentModalOpen && paymentMethod === 'PIX' && settings && cartTotal > 0) {
+    if (isPaymentModalOpen && paymentMethod === 'PIX' && settings && amountDue > 0) {
         const brCode = generatePixBrCode({
             pixKey: settings.pixKey, recipientName: settings.companyName,
             city: settings.address.split(',')[1]?.trim()?.split('-')[0]?.trim() || 'SAO PAULO',
-            amount: cartTotal, txid: `SALE${Date.now()}`
+            amount: amountDue, txid: `SALE${Date.now()}`
         });
         setPixBrCode(brCode);
     } else { setPixBrCode(null); }
-  }, [isPaymentModalOpen, paymentMethod, settings, cartTotal]);
+  }, [isPaymentModalOpen, paymentMethod, settings, amountDue]);
   
   const formatCurrency = (value: number | undefined) => (value ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -155,16 +165,21 @@ const POS: React.FC = () => {
     dispatch({ type: 'CLEAR_CART' });
     setSaleCompleted(null);
     setPaymentModalOpen(false);
-    setFinalizeModalOpen(false);
     setIdentifyCustomerModalOpen(true);
     setActiveCustomer(null);
+    setAppliedCredit(0);
     refetchProducts();
+    refetchCredits();
   };
 
-  const handleFinalizeSale = async (method?: Sale['paymentMethod']) => {
-    const finalPaymentMethod = method || paymentMethod;
+  const handleFinalizeSale = async () => {
     setIsProcessing(true);
     try {
+        let finalPaymentMethod: Sale['paymentMethod'] = paymentMethod;
+        if (amountDue <= 0 && appliedCredit > 0) {
+            finalPaymentMethod = 'Troca / Vale-Crédito';
+        }
+
         const saleData = { 
             items: cart, 
             totalAmount: cartTotal, 
@@ -172,19 +187,19 @@ const POS: React.FC = () => {
             customerId: activeCustomer?.id,
             customerName: activeCustomer?.name,
         };
-        const deliveryInfo = finalPaymentMethod === 'A Pagar na Entrega' ? { address: activeCustomer?.address || '', customerName: activeCustomer?.name || '' } : undefined;
-        const completedSale = await api.processSale(saleData, deliveryInfo);
         
-        if (finalPaymentMethod !== 'A Pagar na Entrega') {
-            setSaleCompleted(completedSale);
-        } else {
-            alert('Venda enviada para entrega com sucesso!');
-            startNewSale();
-        }
+        const creditPayment = appliedCredit > 0 ? {
+            creditIds: customerCredits.map(c => c.id),
+            amount: appliedCredit,
+        } : undefined;
+
+        const completedSale = await api.processSale(saleData, creditPayment);
+        setSaleCompleted(completedSale);
+
     } catch (error) {
         console.error("Erro ao processar venda:", error);
         alert("Falha ao processar a venda.");
-    } finally { setIsProcessing(false); if (method !== 'A Pagar na Entrega') { setFinalizeModalOpen(false); setPaymentModalOpen(false); } }
+    } finally { setIsProcessing(false); setPaymentModalOpen(false); }
   };
   
   const handleOpenCashRegister = async (openingBalance: number) => {
@@ -232,6 +247,23 @@ const POS: React.FC = () => {
         printWindow?.print();
       }
   };
+  
+  // FIX: Refactored function to fix a TypeScript error and use React state instead of direct DOM manipulation.
+  // The button's state is now derived from `saleCompleted`, which is updated here.
+  const handleCreateDelivery = async () => {
+    if(!saleCompleted || !saleCompleted.customerId || !activeCustomer?.address) return;
+    setIsProcessing(true);
+    try {
+        const newDelivery = await api.createDeliveryForSale(saleCompleted.id, activeCustomer.name, activeCustomer.address);
+        alert("Entrega registrada com sucesso!");
+        setSaleCompleted(prevSale => prevSale ? { ...prevSale, deliveryId: newDelivery.id } : null);
+    } catch (error) {
+        console.error("Erro ao criar entrega:", error);
+        alert("Falha ao registrar entrega.");
+    } finally {
+        setIsProcessing(false);
+    }
+  }
 
   const formatAccessKey = (key: string | undefined) => key?.match(/.{1,4}/g)?.join(' ') ?? '';
 
@@ -331,22 +363,74 @@ const IdentifyCustomerModal = () => {
     )
 }
 
-const FinalizeSaleModal = () => (
-    <Modal isOpen={isFinalizeModalOpen} onClose={() => setFinalizeModalOpen(false)} title="Como deseja finalizar?">
-        <div className="flex flex-col gap-4">
-            <Button size="lg" className="w-full" onClick={() => { setFinalizeModalOpen(false); setPaymentModalOpen(true); }}>
-                Finalizar Pagamento no Caixa
-            </Button>
-            <Button size="lg" variant="secondary" className="w-full"
-                onClick={() => handleFinalizeSale('A Pagar na Entrega')}
-                disabled={!activeCustomer?.address}
-                isLoading={isProcessing}>
-                Enviar para Entrega
-            </Button>
-            {!activeCustomer?.address && <p className="text-xs text-center text-red-500">A entrega está desabilitada pois este cliente não possui endereço cadastrado.</p>}
-        </div>
-    </Modal>
-);
+const PaymentModal = () => {
+    const totalCreditBalance = useMemo(() => customerCredits.reduce((acc, credit) => acc + credit.balance, 0), [customerCredits]);
+
+    const handleApplyCredit = () => {
+        const amountToApply = Math.min(totalCreditBalance, cartTotal);
+        setAppliedCredit(amountToApply);
+    };
+
+    return (
+        <Modal isOpen={isPaymentModalOpen} onClose={() => setPaymentModalOpen(false)} title="Finalizar Venda">
+            <div>
+                <div className="text-center mb-6">
+                    <p className="text-lg text-text-secondary">Total da Compra</p>
+                    <p className="text-5xl font-bold text-text-primary">{cartTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</p>
+                    {appliedCredit > 0 && (
+                        <>
+                         <p className="text-lg font-semibold text-green-600 mt-2">- {appliedCredit.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} (Vale-Crédito)</p>
+                         <hr className="my-2"/>
+                         <p className="text-lg text-text-secondary">Total a Pagar</p>
+                         <p className="text-5xl font-bold text-brand-primary">{amountDue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</p>
+                        </>
+                    )}
+                </div>
+
+                {totalCreditBalance > 0 && appliedCredit === 0 && (
+                    <div className="p-4 bg-green-50 border border-green-200 rounded-lg mb-6 flex items-center justify-between">
+                        <div className="flex items-center">
+                            <TicketIcon className="h-6 w-6 text-green-700 mr-3"/>
+                            <div>
+                                <h4 className="font-semibold text-green-800">Vale-Crédito Disponível</h4>
+                                <p className="text-xl font-bold text-green-700">{totalCreditBalance.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</p>
+                            </div>
+                        </div>
+                        <Button size="sm" onClick={handleApplyCredit}>Aplicar Crédito</Button>
+                    </div>
+                )}
+                
+                {amountDue > 0 && (
+                    <div className="space-y-4">
+                        <h3 className="font-semibold">Método de pagamento:</h3>
+                        <div className="grid grid-cols-2 gap-4">
+                            {(['Dinheiro', 'Cartão de Crédito', 'Cartão de Débito', 'PIX'] as const).map(method => (
+                                <button key={method} onClick={() => setPaymentMethod(method)}
+                                    className={`p-4 border rounded-lg text-center font-semibold transition-colors ${paymentMethod === method ? 'bg-brand-primary text-white border-brand-primary' : 'hover:border-brand-light'}`}>
+                                    {method}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {paymentMethod === 'PIX' && pixBrCode && amountDue > 0 &&(
+                    <div className="mt-6 p-4 bg-gray-50 rounded-lg text-center">
+                        <h4 className="font-semibold text-text-primary mb-2">Pagar com PIX</h4>
+                        <p className="text-sm text-text-muted mb-4">Escaneie o QR Code com o app do seu banco.</p>
+                        <div className="flex justify-center"><QRCode value={pixBrCode} /></div>
+                    </div>
+                )}
+                <div className="mt-8 flex justify-end gap-3">
+                    <Button variant="secondary" onClick={() => {setPaymentModalOpen(false); setAppliedCredit(0);}}>Cancelar</Button>
+                    <Button onClick={handleFinalizeSale} isLoading={isProcessing}>
+                        {amountDue <= 0 ? 'Finalizar com Vale-Crédito' : 'Confirmar Pagamento'}
+                    </Button>
+                </div>
+            </div>
+        </Modal>
+    )
+}
 
   return (
     <div className="relative flex flex-col h-full max-h-[calc(100vh-4rem)] bg-gray-200 font-sans">
@@ -452,7 +536,7 @@ const FinalizeSaleModal = () => (
             <Button variant="danger" className="h-14 w-14 p-0" onClick={() => dispatch({ type: 'CLEAR_CART' })} disabled={cart.length === 0} aria-label="Limpar carrinho">
                 <Trash2Icon className="h-7 w-7"/>
             </Button>
-            <Button onClick={() => setFinalizeModalOpen(true)} disabled={cart.length === 0} className="h-14 text-lg px-8">
+            <Button onClick={() => setPaymentModalOpen(true)} disabled={cart.length === 0} className="h-14 text-lg px-8">
                 Finalizar Venda
             </Button>
         </div>
@@ -462,41 +546,9 @@ const FinalizeSaleModal = () => (
         {cashSession ? <ManageCashRegister /> : <OpenCashRegisterForm />}
       </Modal>
 
-      <FinalizeSaleModal />
-
-       <Modal isOpen={isPaymentModalOpen} onClose={() => setPaymentModalOpen(false)} title="Finalizar Venda">
-        <div>
-            <div className="text-center mb-6">
-                <p className="text-lg text-text-secondary">Total a Pagar</p>
-                <p className="text-5xl font-bold text-brand-primary">{cartTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</p>
-            </div>
-            <div className="space-y-4">
-                <h3 className="font-semibold">Método de pagamento:</h3>
-                <div className="grid grid-cols-2 gap-4">
-                    {(['Dinheiro', 'Cartão de Crédito', 'Cartão de Débito', 'PIX'] as const).map(method => (
-                        <button key={method} onClick={() => setPaymentMethod(method)}
-                            className={`p-4 border rounded-lg text-center font-semibold transition-colors ${paymentMethod === method ? 'bg-brand-primary text-white border-brand-primary' : 'hover:border-brand-light'}`}>
-                            {method}
-                        </button>
-                    ))}
-                </div>
-            </div>
-
-            {paymentMethod === 'PIX' && pixBrCode && (
-                <div className="mt-6 p-4 bg-gray-50 rounded-lg text-center">
-                    <h4 className="font-semibold text-text-primary mb-2">Pagar com PIX</h4>
-                    <p className="text-sm text-text-muted mb-4">Escaneie o QR Code com o app do seu banco.</p>
-                    <div className="flex justify-center"><QRCode value={pixBrCode} /></div>
-                </div>
-            )}
-            <div className="mt-8 flex justify-end gap-3">
-                <Button variant="secondary" onClick={() => setPaymentModalOpen(false)}>Cancelar</Button>
-                <Button onClick={() => handleFinalizeSale()} isLoading={isProcessing}>Confirmar Pagamento</Button>
-            </div>
-        </div>
-       </Modal>
+       <PaymentModal />
        
-       <Modal isOpen={!!saleCompleted} onClose={startNewSale} title="NFC-e - Nota Fiscal de Consumidor Eletrônica">
+       <Modal isOpen={!!saleCompleted} onClose={startNewSale} title="Venda Finalizada com Sucesso!">
         <div>
             <div ref={receiptRef} className="max-w-md mx-auto border-2 border-dashed border-gray-400 p-4 bg-white text-black font-mono text-xs">
               <div className="text-center">
@@ -531,10 +583,17 @@ const FinalizeSaleModal = () => (
                 <span>VALOR TOTAL R$</span>
                 <span>{saleCompleted?.totalAmount.toFixed(2)}</span>
               </div>
+               <hr className="my-1 border-dashed border-gray-400"/>
                <div className="flex justify-between">
                 <span>Forma de Pagamento:</span>
                 <span>{saleCompleted?.paymentMethod}</span>
               </div>
+              {saleCompleted?.storeCreditAmountUsed && saleCompleted.storeCreditAmountUsed > 0 && (
+                <div className="flex justify-between">
+                    <span>(Valor em Vale-Crédito):</span>
+                    <span>{saleCompleted.storeCreditAmountUsed.toFixed(2)}</span>
+                </div>
+              )}
                <div className="flex justify-between font-bold">
                 <span>VALOR PAGO R$</span>
                 <span>{saleCompleted?.totalAmount.toFixed(2)}</span>
@@ -554,9 +613,25 @@ const FinalizeSaleModal = () => (
               <p className="text-center">Protocolo de autorização: 123456789012345</p>
               <p className="text-center">Data: {saleCompleted ? new Date(saleCompleted.date).toLocaleString('pt-BR') : ''}</p>
             </div>
-            <div className="mt-6 flex justify-end gap-3 no-print">
-                <Button variant="secondary" onClick={startNewSale}>Nova Venda</Button>
-                <Button onClick={handlePrintReceipt}><PrinterIcon className="h-4 w-4 mr-2"/>Imprimir</Button>
+            <div className="mt-6 flex justify-between items-center no-print">
+                <div>
+                {activeCustomer?.address && (
+                    <Button 
+                        id="delivery-btn"
+                        variant="secondary" 
+                        onClick={handleCreateDelivery} 
+                        isLoading={isProcessing}
+                        disabled={!!saleCompleted?.deliveryId}
+                    >
+                        <TruckIcon className="h-4 w-4 mr-2"/>
+                        {saleCompleted?.deliveryId ? 'Entrega Registrada' : 'Enviar para Entrega'}
+                    </Button>
+                )}
+                </div>
+                <div className="flex gap-3">
+                    <Button variant="secondary" onClick={startNewSale}>Nova Venda</Button>
+                    <Button onClick={handlePrintReceipt}><PrinterIcon className="h-4 w-4 mr-2"/>Imprimir</Button>
+                </div>
             </div>
         </div>
        </Modal>

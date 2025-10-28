@@ -141,8 +141,9 @@ const Reports: React.FC = () => {
                                                 <li className="flex justify-between"><span>(+) Vendas PIX:</span> <span>{formatCurrency(session.salesSummary['PIX'])}</span></li>
                                                 <li className="flex justify-between"><span>(+) Vendas Cartão Crédito:</span> <span>{formatCurrency(session.salesSummary['Cartão de Crédito'])}</span></li>
                                                 <li className="flex justify-between"><span>(+) Vendas Cartão Débito:</span> <span>{formatCurrency(session.salesSummary['Cartão de Débito'])}</span></li>
+                                                <li className="flex justify-between"><span>(+) Vendas Vale-Crédito:</span> <span>{formatCurrency(session.salesSummary['Troca / Vale-Crédito'])}</span></li>
                                                 <li className="flex justify-between"><span>(-) Sangrias:</span> <span>{formatCurrency(session.totalSangrias)}</span></li>
-                                                <li className="flex justify-between font-bold pt-1 border-t mt-1"><span>(=) Valor Esperado:</span> <span>{formatCurrency(session.calculatedClosingBalance)}</span></li>
+                                                <li className="flex justify-between font-bold pt-1 border-t mt-1"><span>(=) Valor Esperado (Dinheiro):</span> <span>{formatCurrency(session.calculatedClosingBalance)}</span></li>
                                             </ul>
                                         </div>
                                          <div>

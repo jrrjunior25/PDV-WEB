@@ -193,6 +193,13 @@ const SalesHistory: React.FC = () => {
                                   </li>
                                 ))}
                               </ul>
+                              <div className="mt-2 text-xs text-right">
+                                {sale.storeCreditAmountUsed && sale.storeCreditAmountUsed > 0 && (
+                                  <p>Pago com Vale-Crédito: <span className="font-semibold">{sale.storeCreditAmountUsed.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span></p>
+                                )}
+                                <p>Pago com {sale.paymentMethod}: <span className="font-semibold">{(sale.totalAmount - (sale.storeCreditAmountUsed || 0)).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span></p>
+                                <p className="font-bold text-sm mt-1">Total: <span className="font-bold">{sale.totalAmount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span></p>
+                              </div>
                             </div>
                           </td>
                         </tr>

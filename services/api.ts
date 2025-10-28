@@ -43,8 +43,6 @@ let mockAccountsPayable: AccountPayable[] = [
 
 let mockDeliveries: Delivery[] = [
   { id: 'd1', saleId: 's1', customerName: 'João Silva', address: 'Rua das Flores, 123, São Paulo, SP', status: 'Entregue', deliveryPerson: 'Marcos', createdAt: new Date(Date.now() - 86400000 * 2).toISOString() },
-  { id: 'd2', saleId: 's4', customerName: 'Ana Costa', address: 'Av. Paulista, 1500, São Paulo, SP', status: 'Em Trânsito', deliveryPerson: 'Lucas', createdAt: new Date().toISOString(), trackingHistory: [{ lat: -23.561, lng: -46.656, timestamp: new Date().toISOString() }] },
-  { id: 'd3', saleId: 's5', customerName: 'Pedro Martins', address: 'Rua Ipiranga, 789, São Paulo, SP', status: 'Pendente', createdAt: new Date().toISOString() },
 ];
 
 let mockSettings: SystemSettings = {
@@ -62,11 +60,14 @@ const mockUsers: User[] = [
 ];
 
 let mockCashRegisterSessions: CashRegisterSession[] = [
-    { id: 'crs1', openingTime: new Date(Date.now() - 86400000).toISOString(), closingTime: new Date(Date.now() - 86400000 + 8 * 3600000).toISOString(), openingBalance: 200.00, closingBalance: 1550.50, calculatedClosingBalance: 1551.00, status: 'fechado', operatorId: 'u2', operatorName: 'Caixa Teste', salesSummary: { 'Dinheiro': 1201.00, 'PIX': 150.00 }, totalSangrias: 0, notes: 'Pequena diferença no troco.' }
+    { id: 'crs1', openingTime: new Date(Date.now() - 86400000).toISOString(), closingTime: new Date(Date.now() - 86400000 + 8 * 3600000).toISOString(), openingBalance: 200.00, closingBalance: 1550.50, calculatedClosingBalance: 1551.00, status: 'fechado', operatorId: 'u2', operatorName: 'Caixa Teste', salesSummary: { 'Dinheiro': 1201.00, 'PIX': 150.00 }, totalSangrias: 0, totalStoreCreditUsed: 0, notes: 'Pequena diferença no troco.' }
 ];
 let mockSangrias: Sangria[] = [];
 let mockReturns: Return[] = [];
-let mockStoreCredits: StoreCredit[] = [];
+let mockStoreCredits: StoreCredit[] = [
+    { id: 'sc1', customerId: 'c1', customerName: 'João Silva', initialAmount: 50.00, balance: 30.50, createdAt: new Date(Date.now() - 86400000 * 5).toISOString(), expiresAt: new Date(Date.now() + 360 * 24 * 60 * 60 * 1000).toISOString(), status: 'Active' },
+    { id: 'sc2', customerId: 'c2', customerName: 'Maria Oliveira', initialAmount: 120.00, balance: 120.00, createdAt: new Date(Date.now() - 86400000 * 10).toISOString(), expiresAt: new Date(Date.now() + 355 * 24 * 60 * 60 * 1000).toISOString(), status: 'Active' },
+];
 
 const simulateDelay = (ms: number) => new Promise(res => setTimeout(res, ms));
 const generateNfceAccessKey = () => Array.from({ length: 44 }, () => Math.floor(Math.random() * 10)).join('');
@@ -122,34 +123,41 @@ export const api = {
   // Sales
   getSales: async (): Promise<Sale[]> => { await simulateDelay(700); return [...mockSales].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()); },
   
-  processSale: async (sale: Omit<Sale, 'id' | 'date' | 'status' | 'items'> & { items: Omit<Sale['items'][0], 'returnableQuantity'>[] }, deliveryInfo?: { address: string, customerName: string }): Promise<Sale> => {
+  processSale: async (
+      sale: Omit<Sale, 'id' | 'date' | 'status' | 'items' | 'storeCreditAmountUsed'> & { items: Omit<Sale['items'][0], 'returnableQuantity'>[] },
+      storeCreditPayment?: { creditIds: string[], amount: number }
+  ): Promise<Sale> => {
     await simulateDelay(1000);
-    const accessKey = generateNfceAccessKey();
-    let newDeliveryId: string | undefined = undefined;
 
+    // Process store credit payment
+    if (storeCreditPayment && storeCreditPayment.amount > 0) {
+      let amountToDeduct = storeCreditPayment.amount;
+      for (const creditId of storeCreditPayment.creditIds) {
+        if (amountToDeduct <= 0) break;
+        const creditIndex = mockStoreCredits.findIndex(c => c.id === creditId && c.status === 'Active');
+        if (creditIndex !== -1) {
+          const credit = mockStoreCredits[creditIndex];
+          const deduction = Math.min(credit.balance, amountToDeduct);
+          credit.balance -= deduction;
+          amountToDeduct -= deduction;
+          if (credit.balance <= 0) {
+            credit.status = 'Used';
+          }
+        }
+      }
+    }
+
+    const accessKey = generateNfceAccessKey();
     const newSale: Sale = {
       ...sale,
       id: `s${Date.now()}`,
       date: new Date().toISOString(),
       items: sale.items.map(item => ({...item, returnableQuantity: item.quantity})),
-      status: sale.paymentMethod === 'A Pagar na Entrega' ? 'Pending Payment' : 'Completed',
-      nfceAccessKey: sale.paymentMethod !== 'A Pagar na Entrega' ? accessKey : undefined,
-      nfceQrCodeUrl: sale.paymentMethod !== 'A Pagar na Entrega' ? `https://www.sefaz.rs.gov.br/nfce/consulta?p=${accessKey}|2|1|1|${btoa(String(sale.totalAmount))}` : undefined,
-      deliveryId: newDeliveryId,
+      status: 'Completed',
+      nfceAccessKey: accessKey,
+      nfceQrCodeUrl: `https://www.sefaz.rs.gov.br/nfce/consulta?p=${accessKey}|2|1|1|${btoa(String(sale.totalAmount))}`,
+      storeCreditAmountUsed: storeCreditPayment?.amount,
     };
-    
-    if (deliveryInfo) {
-      const newDelivery: Delivery = {
-        id: `d${Date.now()}`,
-        saleId: newSale.id,
-        customerName: deliveryInfo.customerName || 'Cliente Balcão',
-        address: deliveryInfo.address,
-        status: 'Pendente',
-        createdAt: newSale.date,
-      };
-      mockDeliveries.push(newDelivery);
-      newSale.deliveryId = newDelivery.id;
-    }
 
     newSale.items.forEach(item => {
       const productIndex = mockProducts.findIndex(p => p.id === item.productId);
@@ -158,6 +166,24 @@ export const api = {
 
     mockSales.push(newSale);
     return newSale;
+  },
+
+  createDeliveryForSale: async (saleId: string, customerName: string, address: string): Promise<Delivery> => {
+    await simulateDelay(500);
+    const saleIndex = mockSales.findIndex(s => s.id === saleId);
+    if(saleIndex === -1) throw new Error("Venda não encontrada para criar entrega.");
+
+    const newDelivery: Delivery = {
+        id: `d${Date.now()}`,
+        saleId: saleId,
+        customerName: customerName,
+        address: address,
+        status: 'Pendente',
+        createdAt: new Date().toISOString(),
+    };
+    mockDeliveries.push(newDelivery);
+    mockSales[saleIndex].deliveryId = newDelivery.id;
+    return newDelivery;
   },
 
   // Customers
@@ -242,6 +268,7 @@ export const api = {
       status: 'aberto',
       salesSummary: {},
       totalSangrias: 0,
+      totalStoreCreditUsed: 0,
     };
     mockCashRegisterSessions.push(newSession);
     return newSession;
@@ -271,8 +298,22 @@ export const api = {
     const salesInSession = mockSales.filter(sale => new Date(sale.date) >= new Date(session.openingTime));
     
     const salesSummary: { [key in Sale['paymentMethod']]?: number } = {};
+    let totalStoreCreditUsedInSession = 0;
+
     salesInSession.forEach(sale => {
-      salesSummary[sale.paymentMethod] = (salesSummary[sale.paymentMethod] || 0) + sale.totalAmount;
+      // Add to total store credit used
+      if (sale.storeCreditAmountUsed) {
+        totalStoreCreditUsedInSession += sale.storeCreditAmountUsed;
+      }
+      
+      // Calculate the amount for the primary payment method
+      const amountForPaymentMethod = sale.totalAmount - (sale.storeCreditAmountUsed || 0);
+
+      if (amountForPaymentMethod > 0.009) { // Check for amounts greater than a cent
+        salesSummary[sale.paymentMethod] = (salesSummary[sale.paymentMethod] || 0) + amountForPaymentMethod;
+      } else if (sale.paymentMethod === 'Troca / Vale-Crédito') { // Full payment with credit
+        salesSummary[sale.paymentMethod] = (salesSummary[sale.paymentMethod] || 0) + sale.totalAmount;
+      }
     });
 
     const totalSangrias = mockSangrias
@@ -288,6 +329,7 @@ export const api = {
     session.calculatedClosingBalance = calculatedClosingBalance;
     session.salesSummary = salesSummary;
     session.totalSangrias = totalSangrias;
+    session.totalStoreCreditUsed = totalStoreCreditUsedInSession;
     session.notes = notes;
 
     mockCashRegisterSessions[sessionIndex] = session;
@@ -314,8 +356,7 @@ export const api = {
     
     const sale = mockSales[saleIndex];
     let totalReturnedValue = 0;
-    let totalItemsBeingReturned = 0;
-
+    
     // Validate and process items
     itemsToReturn.forEach(returnItem => {
       const originalItemIndex = sale.items.findIndex(i => i.productId === returnItem.productId);
@@ -328,7 +369,6 @@ export const api = {
       
       originalItem.returnableQuantity -= returnItem.quantity;
       totalReturnedValue += returnItem.totalPrice;
-      totalItemsBeingReturned += returnItem.quantity;
       
       // Update stock
       const productIndex = mockProducts.findIndex(p => p.id === returnItem.productId);

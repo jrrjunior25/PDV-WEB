@@ -1,4 +1,4 @@
-import { Product, Sale, Customer, SystemSettings, User, ProductCategory, Supplier, AccountPayable, Delivery } from '../types';
+import { Product, Sale, Customer, SystemSettings, User, ProductCategory, Supplier, AccountPayable, Delivery, CashRegisterSession, Sangria } from '../types';
 
 // --- MOCK DATABASE ---
 
@@ -57,8 +57,13 @@ let mockSettings: SystemSettings = {
 
 const mockUsers: User[] = [
   { id: 'u1', name: 'Admin', email: 'admin@pdv.com', role: 'administrador', password: 'admin 123' },
-  { id: 'u2', name: 'Caixa', email: 'caixa@pdv.com', role: 'caixa', password: '123' },
+  { id: 'u2', name: 'Caixa Teste', email: 'caixa@pdv.com', role: 'caixa', password: '123' },
 ];
+
+let mockCashRegisterSessions: CashRegisterSession[] = [
+    { id: 'crs1', openingTime: new Date(Date.now() - 86400000).toISOString(), closingTime: new Date(Date.now() - 86400000 + 8 * 3600000).toISOString(), openingBalance: 200.00, closingBalance: 1550.50, calculatedClosingBalance: 1551.00, status: 'fechado', operatorId: 'u2', operatorName: 'Caixa Teste', salesSummary: { 'Dinheiro': 1201.00, 'PIX': 150.00 }, totalSangrias: 0, notes: 'Pequena diferença no troco.' }
+];
+let mockSangrias: Sangria[] = [];
 
 const simulateDelay = (ms: number) => new Promise(res => setTimeout(res, ms));
 
@@ -209,4 +214,79 @@ export const api = {
     }
     return mockDeliveries[index];
   },
+  
+  // Cash Register
+  getCurrentCashRegisterSession: async (): Promise<CashRegisterSession | null> => {
+    await simulateDelay(400);
+    return mockCashRegisterSessions.find(s => s.status === 'aberto') || null;
+  },
+  openCashRegister: async (openingBalance: number, operatorId: string, operatorName: string): Promise<CashRegisterSession> => {
+    await simulateDelay(600);
+    if (mockCashRegisterSessions.some(s => s.status === 'aberto')) {
+      throw new Error("Já existe um caixa aberto.");
+    }
+    const newSession: CashRegisterSession = {
+      id: `crs${Date.now()}`,
+      openingTime: new Date().toISOString(),
+      openingBalance,
+      operatorId,
+      operatorName,
+      status: 'aberto',
+      salesSummary: {},
+      totalSangrias: 0,
+    };
+    mockCashRegisterSessions.push(newSession);
+    return newSession;
+  },
+  recordSangria: async (sessionId: string, amount: number, operatorName: string): Promise<Sangria> => {
+    await simulateDelay(500);
+    const sessionIndex = mockCashRegisterSessions.findIndex(s => s.id === sessionId && s.status === 'aberto');
+    if (sessionIndex === -1) throw new Error("Nenhuma sessão de caixa aberta encontrada.");
+    
+    const newSangria: Sangria = {
+      id: `sg${Date.now()}`,
+      sessionId,
+      amount,
+      timestamp: new Date().toISOString(),
+      operatorName,
+    };
+    mockSangrias.push(newSangria);
+    mockCashRegisterSessions[sessionIndex].totalSangrias += amount;
+    return newSangria;
+  },
+  closeCashRegister: async (sessionId: string, closingBalance: number, notes: string): Promise<CashRegisterSession> => {
+    await simulateDelay(1200);
+    const sessionIndex = mockCashRegisterSessions.findIndex(s => s.id === sessionId && s.status === 'aberto');
+    if (sessionIndex === -1) throw new Error("Sessão de caixa não encontrada ou já fechada.");
+
+    const session = mockCashRegisterSessions[sessionIndex];
+    const salesInSession = mockSales.filter(sale => new Date(sale.date) >= new Date(session.openingTime));
+    
+    const salesSummary: { [key in Sale['paymentMethod']]?: number } = {};
+    salesInSession.forEach(sale => {
+      salesSummary[sale.paymentMethod] = (salesSummary[sale.paymentMethod] || 0) + sale.totalAmount;
+    });
+
+    const totalSangrias = mockSangrias
+      .filter(s => s.sessionId === sessionId)
+      .reduce((acc, s) => acc + s.amount, 0);
+      
+    const cashIn = salesSummary['Dinheiro'] || 0;
+    const calculatedClosingBalance = session.openingBalance + cashIn - totalSangrias;
+
+    session.closingTime = new Date().toISOString();
+    session.status = 'fechado';
+    session.closingBalance = closingBalance;
+    session.calculatedClosingBalance = calculatedClosingBalance;
+    session.salesSummary = salesSummary;
+    session.totalSangrias = totalSangrias;
+    session.notes = notes;
+
+    mockCashRegisterSessions[sessionIndex] = session;
+    return session;
+  },
+  getCashRegisterSessions: async (): Promise<CashRegisterSession[]> => {
+    await simulateDelay(700);
+    return [...mockCashRegisterSessions].sort((a,b) => new Date(b.openingTime).getTime() - new Date(a.openingTime).getTime());
+  }
 };

@@ -44,6 +44,7 @@ export interface SaleItem {
   quantity: number;
   unitPrice: number;
   totalPrice: number;
+  imageUrl?: string;
 }
 
 // Representa uma venda completa
@@ -119,4 +120,29 @@ export interface Delivery {
   deliveryPerson?: string;
   trackingHistory?: { lat: number; lng: number; timestamp: string }[];
   createdAt: string; // ISO string
+}
+
+// Representa uma retirada de dinheiro do caixa (sangria)
+export interface Sangria {
+  id: string;
+  sessionId: string;
+  amount: number;
+  timestamp: string; // ISO string
+  operatorName: string;
+}
+
+// Representa uma sessão de caixa (abertura e fechamento)
+export interface CashRegisterSession {
+  id: string;
+  openingTime: string; // ISO string
+  closingTime?: string; // ISO string
+  openingBalance: number; // Valor de abertura (suprimento)
+  closingBalance?: number; // Valor contado no fechamento
+  calculatedClosingBalance?: number; // Valor que deveria estar no caixa
+  status: 'aberto' | 'fechado';
+  operatorId: string;
+  operatorName: string;
+  salesSummary: { [key in Sale['paymentMethod']]?: number };
+  totalSangrias: number;
+  notes?: string;
 }

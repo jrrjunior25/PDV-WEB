@@ -59,6 +59,7 @@ const POS: React.FC = () => {
   const { data: settings } = useMockApi<SystemSettings>(api.getSettings);
   
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
   const [cart, dispatch] = useReducer(cartReducer, []);
   const [isPaymentModalOpen, setPaymentModalOpen] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<'Dinheiro' | 'Cartão de Crédito' | 'Cartão de Débito' | 'PIX'>('PIX');
@@ -70,6 +71,17 @@ const POS: React.FC = () => {
   const cartTotal = useMemo(() => {
     return cart.reduce((total, item) => total + item.totalPrice, 0);
   }, [cart]);
+
+  // Debounce effect for search term
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm);
+    }, 300); // 300ms delay
+
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [searchTerm]);
 
   useEffect(() => {
     if (isPaymentModalOpen && paymentMethod === 'PIX' && settings && cartTotal > 0) {
@@ -88,11 +100,12 @@ const POS: React.FC = () => {
 
 
   const filteredProducts = useMemo(() => {
+    if (!debouncedSearchTerm) return products ?? [];
     return products?.filter(p =>
-      p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.barcode.includes(searchTerm)
+      p.name.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) ||
+      p.barcode.includes(debouncedSearchTerm)
     ) ?? [];
-  }, [products, searchTerm]);
+  }, [products, debouncedSearchTerm]);
 
   const handleFinalizeSale = async () => {
     setIsProcessing(true);

@@ -1,4 +1,5 @@
-import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { api } from '../services/api';
 import { SaleItem, Sale, CashRegisterSession, Customer, StoreCredit, Product } from '../types';
 import { useAuth } from '../auth/AuthContext';

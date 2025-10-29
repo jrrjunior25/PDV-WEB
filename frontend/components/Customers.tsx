@@ -1,3 +1,4 @@
+
 import { useState, useMemo } from 'react';
 import { api } from '../../backend/api';
 import { Customer, Sale, StoreCredit } from '../../shared/types';
@@ -106,6 +107,18 @@ const Customers = () => {
       addNotification('O nome do cliente é obrigatório.', 'warning');
       return;
     }
+
+    // Check for duplicate CPF/CNPJ
+    if (editingCustomer.cpfCnpj && customers) {
+      const isDuplicate = customers.some(
+        (c) => c.cpfCnpj === editingCustomer.cpfCnpj && c.id !== editingCustomer.id
+      );
+      if (isDuplicate) {
+        addNotification('Este CPF/CNPJ já está cadastrado para outro cliente.', 'error');
+        return;
+      }
+    }
+
     setIsSaving(true);
     try {
       await api.saveCustomer(editingCustomer as Customer);
@@ -193,6 +206,7 @@ const Customers = () => {
     )}
      {isAdmin && isModalOpen && (
         <Modal isOpen={isModalOpen} onClose={closeModal} title={editingCustomer?.id ? 'Editar Cliente' : 'Adicionar Cliente'}>
+          
             <div className="space-y-4">
                 <Input name="name" label="Nome Completo" value={editingCustomer?.name || ''} onChange={handleInputChange} required autoFocus/>
                 <Input name="cpfCnpj" label="CPF/CNPJ" value={editingCustomer?.cpfCnpj || ''} onChange={handleInputChange} />

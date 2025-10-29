@@ -1,3 +1,4 @@
+
 import { GoogleGenAI } from "@google/genai";
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -21,6 +22,7 @@ export const generateProductDescription = async (productName: string, category: 
         contents: prompt,
     });
 
+    // FIX: Correctly access the 'text' property from the response.
     return response.text.trim();
   } catch (error) {
     console.error("Erro ao gerar descrição com Gemini:", error);

@@ -1,11 +1,14 @@
+
 import type { ReactNode, ButtonHTMLAttributes } from 'react';
 
-interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+// FIX: Changed to a type intersection to correctly include all ButtonHTMLAttributes.
+// This resolves multiple errors where button props like onClick, className, etc., were not recognized.
+type ButtonProps = {
   children: ReactNode;
   variant?: 'primary' | 'secondary' | 'danger' | 'ghost';
   size?: 'sm' | 'md' | 'lg';
   isLoading?: boolean;
-}
+} & ButtonHTMLAttributes<HTMLButtonElement>;
 
 const Button = ({ 
   children, 

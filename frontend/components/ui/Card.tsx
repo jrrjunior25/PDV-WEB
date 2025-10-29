@@ -13,8 +13,8 @@ const Card = ({ title, value, icon: Icon, isWarning = false, onClick, className 
   const content = (
     <>
       <div>
-        <p className="text-sm font-medium text-text-muted text-left">{title}</p>
-        <p className={`text-2xl font-bold text-left ${isWarning ? 'text-red-500' : 'text-text-primary'}`}>{value}</p>
+        <p className="text-sm font-medium text-text-muted">{title}</p>
+        <p className={`text-2xl font-bold ${isWarning ? 'text-red-500' : 'text-text-primary'}`}>{value}</p>
       </div>
       <div className={`p-3 rounded-full ${isWarning ? 'bg-red-100 text-red-600' : 'bg-brand-accent/20 text-brand-primary'}`}>
         <Icon className="h-6 w-6" />
@@ -22,7 +22,7 @@ const Card = ({ title, value, icon: Icon, isWarning = false, onClick, className 
     </>
   );
 
-  const baseClasses = "bg-surface-card p-6 rounded-lg shadow-sm flex items-center justify-between w-full";
+  const baseClasses = "bg-surface-card p-6 rounded-lg shadow-sm flex items-center justify-between w-full text-left";
 
   if (onClick) {
     return (

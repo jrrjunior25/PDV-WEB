@@ -1,4 +1,5 @@
-import { useState, useMemo, Fragment } from 'react';
+
+import React, { useState, useMemo, Fragment } from 'react';
 import { api } from '../services/api';
 import { useMockApi } from '../hooks/useMockApi';
 import { Sale, ReturnItem, User } from '../types';

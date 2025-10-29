@@ -5,13 +5,15 @@ import { Product, ProductCategory } from '../types';
 import Button from './ui/Button';
 import Modal from './ui/Modal';
 import Input from './ui/Input';
+import ErrorDisplay from './ui/ErrorDisplay';
 import { generateProductDescription } from '../services/geminiService';
 import { useAuth } from '../auth/AuthContext';
 import { PlusIcon, EditIcon, SparklesIcon, MinusCircleIcon, PlusCircleIcon } from './icons/Icon';
 
 const Products = () => {
-  const { data: products, loading, refetch } = useMockApi<Product[]>(api.getProducts);
-  const { data: categories, refetch: refetchCategories } = useMockApi<ProductCategory[]>(api.getProductCategories);
+  const { data: products, loading: loadingProducts, error: productsError, refetch: refetchProducts } = useMockApi<Product[]>(api.getProducts);
+  const { data: categories, loading: loadingCategories, error: categoriesError, refetch: refetchCategories } = useMockApi<ProductCategory[]>(api.getProductCategories);
+  
   const [isModalOpen, setModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Partial<Product> | null>(null);
   const [isGeneratingDesc, setIsGeneratingDesc] = useState(false);
@@ -22,6 +24,13 @@ const Products = () => {
 
   const { user } = useAuth();
   const isAdmin = user?.role === 'administrador';
+
+  const loading = loadingProducts || loadingCategories;
+  const error = productsError || categoriesError;
+  const refetchAll = () => {
+      refetchProducts();
+      refetchCategories();
+  };
 
   // --- Product Modal Logic ---
   const openProductModal = (product: Partial<Product> | null = null) => {
@@ -66,9 +75,13 @@ const Products = () => {
 
   const handleProductSave = async () => {
     if (!editingProduct) return;
-    await api.saveProduct(editingProduct as Product);
-    refetch();
-    closeProductModal();
+    try {
+        await api.saveProduct(editingProduct as Product);
+        refetchProducts();
+        closeProductModal();
+    } catch (e: any) {
+        alert(`Erro ao salvar produto: ${e.message}`);
+    }
   };
   
   const handleStockChange = async (productId: string, newStock: number) => {
@@ -76,7 +89,7 @@ const Products = () => {
     setIsUpdatingStock(productId);
     try {
       await api.updateProductStock(productId, newStock);
-      refetch();
+      refetchProducts();
     } catch (error) {
       console.error("Failed to update stock", error);
       alert("Erro ao atualizar o estoque.");
@@ -98,14 +111,69 @@ const Products = () => {
 
   const handleCategorySave = async () => {
     if (!editingCategory?.name) return;
-    await api.saveProductCategory(editingCategory as ProductCategory);
-    refetchCategories();
-    closeCategoryModal();
+    try {
+        await api.saveProductCategory(editingCategory as ProductCategory);
+        refetchCategories();
+        closeCategoryModal();
+    } catch (e: any) {
+        alert(`Erro ao salvar categoria: ${e.message}`);
+    }
   };
 
   const getCategoryName = (categoryId: string) => {
     return categories?.find(c => c.id === categoryId)?.name || 'Sem Categoria';
   };
+  
+  const tableContent = () => {
+    if (loading) return <tr><td colSpan={isAdmin ? 5 : 4} className="text-center py-8">Carregando produtos...</td></tr>;
+    if (error) return <tr><td colSpan={isAdmin ? 5 : 4} className="p-4"><ErrorDisplay message={`Não foi possível carregar os produtos. ${error.message}`} onRetry={refetchAll} /></td></tr>;
+    return products?.map(product => (
+        <tr key={product.id} className="bg-surface-card border-b hover:bg-surface-main/50">
+            <td className="px-6 py-4 font-medium text-text-primary whitespace-nowrap">{product.name}</td>
+            <td className="px-6 py-4">{getCategoryName(product.categoryId)}</td>
+            <td className="px-6 py-4">{product.price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+            <td className="px-6 py-4">
+              <div className={`flex items-center justify-start font-semibold ${product.stock <= product.lowStockThreshold ? 'text-red-500' : 'text-green-600'}`}>
+                {isAdmin ? (
+                  <>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="p-1 h-6 w-6 disabled:opacity-50"
+                      onClick={() => handleStockChange(product.id, product.stock - 1)}
+                      disabled={!!isUpdatingStock}
+                    >
+                      <MinusCircleIcon className="h-5 w-5" />
+                    </Button>
+                    <span className="w-10 text-center tabular-nums">
+                      {isUpdatingStock === product.id ? <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-gray-400 mx-auto"></div> : product.stock}
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="p-1 h-6 w-6 disabled:opacity-50"
+                      onClick={() => handleStockChange(product.id, product.stock + 1)}
+                      disabled={!!isUpdatingStock}
+                    >
+                      <PlusCircleIcon className="h-5 w-5" />
+                    </Button>
+                  </>
+                ) : (
+                  <span className="tabular-nums">{product.stock}</span>
+                )}
+              </div>
+            </td>
+            {isAdmin && (
+                <td className="px-6 py-4 text-right">
+                    <Button variant="ghost" size="sm" onClick={() => openProductModal(product)}>
+                        <EditIcon className="h-4 w-4"/>
+                    </Button>
+                </td>
+            )}
+        </tr>
+    ));
+  };
+
 
   return (
     <div className="space-y-6">
@@ -129,55 +197,7 @@ const Products = () => {
                     </tr>
                 </thead>
                 <tbody>
-                    {loading ? (
-                        <tr><td colSpan={isAdmin ? 5 : 4} className="text-center py-8">Carregando...</td></tr>
-                    ) : (
-                        products?.map(product => (
-                            <tr key={product.id} className="bg-surface-card border-b hover:bg-surface-main/50">
-                                <td className="px-6 py-4 font-medium text-text-primary whitespace-nowrap">{product.name}</td>
-                                <td className="px-6 py-4">{getCategoryName(product.categoryId)}</td>
-                                <td className="px-6 py-4">{product.price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
-                                <td className="px-6 py-4">
-                                  <div className={`flex items-center justify-start font-semibold ${product.stock <= product.lowStockThreshold ? 'text-red-500' : 'text-green-600'}`}>
-                                    {isAdmin ? (
-                                      <>
-                                        <Button
-                                          variant="ghost"
-                                          size="sm"
-                                          className="p-1 h-6 w-6 disabled:opacity-50"
-                                          onClick={() => handleStockChange(product.id, product.stock - 1)}
-                                          disabled={!!isUpdatingStock}
-                                        >
-                                          <MinusCircleIcon className="h-5 w-5" />
-                                        </Button>
-                                        <span className="w-10 text-center tabular-nums">
-                                          {isUpdatingStock === product.id ? <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-gray-400 mx-auto"></div> : product.stock}
-                                        </span>
-                                        <Button
-                                          variant="ghost"
-                                          size="sm"
-                                          className="p-1 h-6 w-6 disabled:opacity-50"
-                                          onClick={() => handleStockChange(product.id, product.stock + 1)}
-                                          disabled={!!isUpdatingStock}
-                                        >
-                                          <PlusCircleIcon className="h-5 w-5" />
-                                        </Button>
-                                      </>
-                                    ) : (
-                                      <span className="tabular-nums">{product.stock}</span>
-                                    )}
-                                  </div>
-                                </td>
-                                {isAdmin && (
-                                    <td className="px-6 py-4 text-right">
-                                        <Button variant="ghost" size="sm" onClick={() => openProductModal(product)}>
-                                            <EditIcon className="h-4 w-4"/>
-                                        </Button>
-                                    </td>
-                                )}
-                            </tr>
-                        ))
-                    )}
+                    {tableContent()}
                 </tbody>
             </table>
         </div>

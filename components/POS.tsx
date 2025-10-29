@@ -8,6 +8,7 @@ import Input from './ui/Input';
 import Button from './ui/Button';
 import Modal from './ui/Modal';
 import QRCode from './ui/QRCode';
+import ErrorDisplay from './ui/ErrorDisplay';
 import { Trash2Icon, SearchIcon, PrinterIcon, CalculatorIcon, UserSearchIcon, TruckIcon, TicketIcon } from './icons/Icon';
 
 type CartAction =
@@ -60,39 +61,46 @@ const cartReducer = (state: SaleItem[], action: CartAction): SaleItem[] => {
 };
 
 // FIX: Helper function to robustly extract the city from an address string.
+// It now filters empty parts and checks multiple positions to handle various formats.
 const getCityFromAddress = (address: string | undefined): string => {
     const defaultCity = 'SAO PAULO';
     if (!address) return defaultCity;
 
-    const parts = address.split(',').map(p => p.trim());
-    
-    // Most reliable is the last part, which might contain "City - State"
-    if (parts.length > 0) {
-        const lastPart = parts[parts.length - 1];
-        const cityInLastPart = lastPart.split('-')[0].trim();
-        if (cityInLastPart && cityInLastPart.length > 2) { // Check if it's not just a state code
-            return cityInLastPart;
-        }
+    const parts = address.split(',').map(p => p.trim()).filter(Boolean); // Filter out empty strings
+    if (parts.length === 0) return defaultCity;
+
+    // Check last part for "City - State" pattern
+    const lastPart = parts[parts.length - 1];
+    const cityStateParts = lastPart.split('-').map(p => p.trim());
+    // FIX: Ensure the city part is a valid string before returning
+    if (cityStateParts[0] && cityStateParts[0].length > 2) {
+        return cityStateParts[0];
     }
 
-    // If the above fails, try the second to last part
+    // If that fails, check the second to last part (if it exists)
     if (parts.length > 1) {
         const potentialCity = parts[parts.length - 2];
         if (potentialCity && potentialCity.length > 2) {
-             return potentialCity;
+            return potentialCity;
         }
     }
     
+    // As a last resort, if there's only one part, use it if it looks like a city name
+    if (parts.length === 1 && lastPart.length > 2) {
+        return lastPart;
+    }
+
     return defaultCity; // Return a default if no valid city can be found.
 };
 
 const POS = () => {
   const { user } = useAuth();
-  const { data: products, refetch: refetchProducts } = useMockApi<Product[]>(api.getProducts);
+  const { data: products, error: productsError, refetch: refetchProducts } = useMockApi<Product[]>(api.getProducts);
   const { data: settings } = useMockApi<SystemSettings>(api.getSettings);
   const { data: storeCredits, refetch: refetchCredits } = useMockApi<StoreCredit[]>(api.getStoreCredits);
   
   const [cashSession, setCashSession] = useState<CashRegisterSession | null | undefined>(undefined);
+  const [sessionError, setSessionError] = useState<string | null>(null);
   
   const [searchTerm, setSearchTerm] = useState('');
   const [cart, dispatch] = useReducer(cartReducer, []);
@@ -121,11 +129,30 @@ const POS = () => {
   const cartTotal = useMemo(() => cart.reduce((total, item) => total + item.totalPrice, 0), [cart]);
   const amountDue = useMemo(() => Math.max(0, cartTotal - appliedCredit), [cartTotal, appliedCredit]);
 
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
   const fetchCashSession = useCallback(async () => {
-    const session = await api.getCurrentCashRegisterSession();
-    setCashSession(session);
-    if(session){
-        setIdentifyCustomerModalOpen(true);
+    if (isMountedRef.current) {
+      setSessionError(null);
+    }
+    try {
+        const session = await api.getCurrentCashRegisterSession();
+        if (isMountedRef.current) {
+          setCashSession(session);
+          if(session){
+              setIdentifyCustomerModalOpen(true);
+          }
+        }
+    } catch(e: any) {
+        if (isMountedRef.current) {
+          setSessionError(`Falha ao verificar o status do caixa: ${e.message}`);
+        }
     }
   }, []);
   
@@ -241,9 +268,9 @@ const POS = () => {
         const completedSale = await api.processSale(saleData, creditPayment);
         setSaleCompleted(completedSale);
 
-    } catch (error) {
+    } catch (error: any) {
         console.error("Erro ao processar venda:", error);
-        alert("Falha ao processar a venda.");
+        alert(`Falha ao processar a venda: ${error.message}`);
     } finally { setIsProcessing(false); setPaymentModalOpen(false); }
   };
   
@@ -300,9 +327,9 @@ const POS = () => {
         const newDelivery = await api.createDeliveryForSale(saleCompleted.id, activeCustomer.name, activeCustomer.address);
         alert("Entrega registrada com sucesso!");
         setSaleCompleted(prevSale => prevSale ? { ...prevSale, deliveryId: newDelivery.id } : null);
-    } catch (error) {
+    } catch (error: any) {
         console.error("Erro ao criar entrega:", error);
-        alert("Falha ao registrar entrega.");
+        alert(`Falha ao registrar entrega: ${error.message}`);
     } finally {
         setIsProcessing(false);
     }
@@ -313,9 +340,15 @@ const POS = () => {
   const CashRegisterOverlay = () => (
     <div className="absolute inset-0 bg-gray-800 bg-opacity-70 flex flex-col justify-center items-center z-20">
       <div className="text-center text-white p-8 bg-black/50 rounded-lg">
-        <h2 className="text-4xl font-bold mb-4">Caixa Fechado</h2>
-        <p className="mb-8">Você precisa abrir o caixa para iniciar as vendas.</p>
-        <Button size="lg" onClick={() => setIsCashManagerOpen(true)}>Abrir Caixa</Button>
+        {sessionError ? (
+            <ErrorDisplay message={sessionError} onRetry={fetchCashSession} />
+        ) : (
+            <>
+                <h2 className="text-4xl font-bold mb-4">Caixa Fechado</h2>
+                <p className="mb-8">Você precisa abrir o caixa para iniciar as vendas.</p>
+                <Button size="lg" onClick={() => setIsCashManagerOpen(true)}>Abrir Caixa</Button>
+            </>
+        )}
       </div>
     </div>
   );
@@ -346,7 +379,7 @@ const POS = () => {
             <h4 className="font-semibold text-text-primary mb-2">Fechar Caixa</h4>
             <div className="text-sm space-y-2 p-3 bg-gray-50 rounded-md">
                 <div className="flex justify-between"><span>Abertura (Suprimento):</span> <span className="font-semibold">R$ {formatCurrency(closingReport?.openingBalance)}</span></div>
-                <div className="flex justify-between"><span>(+) Vendas em Dinheiro:</span> <span className="font-semibold text-green-600">R$ {formatCurrency(closingReport?.salesSummary['Dinheiro'])}</span></div>
+                <div className="flex justify-between"><span>(+) Vendas em Dinheiro:</span> <span className="font-semibold text-green-600">R$ {formatCurrency(closingReport?.salesSummary?.['Dinheiro'])}</span></div>
                 <div className="flex justify-between"><span>(-) Total de Sangrias:</span> <span className="font-semibold text-red-600">R$ {formatCurrency(closingReport?.totalSangrias)}</span></div>
                 <hr className="my-1"/>
                 <div className="flex justify-between font-bold text-base"><span>(=) Valor Esperado em Caixa:</span> <span>R$ {formatCurrency(closingReport?.expected)}</span></div>
@@ -474,6 +507,17 @@ const PaymentModal = () => {
         </Modal>
     )
 }
+
+  if (productsError) {
+    return (
+        <div className="flex items-center justify-center h-full p-4">
+            <ErrorDisplay 
+                message={`Não foi possível carregar os produtos necessários para o PDV. ${productsError.message}`}
+                onRetry={refetchProducts}
+            />
+        </div>
+    );
+  }
 
   return (
     <div className="relative flex flex-col h-full max-h-[calc(100vh-4rem)] bg-gray-200 font-sans">

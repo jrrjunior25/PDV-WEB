@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useCallback, useRef } from 'react';
 
 // Hook customizado para encapsular a lógica de chamada de API, agora com verificação de montagem.

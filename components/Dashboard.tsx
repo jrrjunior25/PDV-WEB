@@ -4,16 +4,26 @@ import { useMockApi } from '../hooks/useMockApi';
 import { Product, Sale, Customer, ChartData, Delivery, AccountPayable } from '../types';
 import Card from './ui/Card';
 import Chart from './ui/Chart';
+import ErrorDisplay from './ui/ErrorDisplay';
 import { DollarSignIcon, UsersIcon, PackageWarningIcon, ShoppingBagIcon, TruckIcon, ClipboardCheckIcon } from './icons/Icon';
 
 const Dashboard = () => {
-  const { data: sales, loading: loadingSales } = useMockApi<Sale[]>(api.getSales);
-  const { data: products, loading: loadingProducts } = useMockApi<Product[]>(api.getProducts);
-  const { data: customers, loading: loadingCustomers } = useMockApi<Customer[]>(api.getCustomers);
-  const { data: deliveries, loading: loadingDeliveries } = useMockApi<Delivery[]>(api.getDeliveries);
-  const { data: accountsPayable, loading: loadingAccounts } = useMockApi<AccountPayable[]>(api.getAccountsPayable);
+  const { data: sales, loading: loadingSales, error: salesError, refetch: refetchSales } = useMockApi<Sale[]>(api.getSales);
+  const { data: products, loading: loadingProducts, error: productsError, refetch: refetchProducts } = useMockApi<Product[]>(api.getProducts);
+  const { data: customers, loading: loadingCustomers, error: customersError, refetch: refetchCustomers } = useMockApi<Customer[]>(api.getCustomers);
+  const { data: deliveries, loading: loadingDeliveries, error: deliveriesError, refetch: refetchDeliveries } = useMockApi<Delivery[]>(api.getDeliveries);
+  const { data: accountsPayable, loading: loadingAccounts, error: accountsError, refetch: refetchAccounts } = useMockApi<AccountPayable[]>(api.getAccountsPayable);
 
   const loading = loadingSales || loadingProducts || loadingCustomers || loadingDeliveries || loadingAccounts;
+  const error = salesError || productsError || customersError || deliveriesError || accountsError;
+
+  const refetchAll = () => {
+    refetchSales();
+    refetchProducts();
+    refetchCustomers();
+    refetchDeliveries();
+    refetchAccounts();
+  };
 
   const stats = useMemo(() => {
     if (!sales || !products || !customers || !deliveries || !accountsPayable) return null;
@@ -47,16 +57,24 @@ const Dashboard = () => {
     return <div className="flex justify-center items-center h-full"><div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-brand-primary"></div></div>;
   }
 
+  if (error) {
+    return <div className="flex justify-center items-center h-full p-4"><ErrorDisplay message={`Não foi possível carregar os dados do dashboard. ${error.message}`} onRetry={refetchAll} /></div>;
+  }
+
+  // FIX: Safely create the low stock product list to prevent a crash on initial render
+  // when 'products' data is not yet available.
+  const lowStockProductList = products?.filter(p => p.stock <= p.lowStockThreshold) ?? [];
+
   return (
     <div className="space-y-6">
       <h1 className="text-3xl font-bold text-text-primary">Dashboard</h1>
       
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
         <Card title="Receita Total" value={stats?.totalRevenue ?? 'R$ 0,00'} icon={DollarSignIcon} />
-        <Card title="Total de Vendas" value={stats?.totalSales.toString() ?? '0'} icon={ShoppingBagIcon} />
-        <Card title="Entregas Pendentes" value={stats?.pendingDeliveries.toString() ?? '0'} icon={TruckIcon} />
-        <Card title="Contas a Pagar" value={stats?.dueAccounts.toString() ?? '0'} icon={ClipboardCheckIcon} isWarning={stats?.dueAccounts > 0}/>
-        <Card title="Estoque Baixo" value={stats?.lowStockProducts.toString() ?? '0'} icon={PackageWarningIcon} isWarning={stats?.lowStockProducts > 0} />
+        <Card title="Total de Vendas" value={(stats?.totalSales ?? 0).toString()} icon={ShoppingBagIcon} />
+        <Card title="Entregas Pendentes" value={(stats?.pendingDeliveries ?? 0).toString()} icon={TruckIcon} />
+        <Card title="Contas a Pagar" value={(stats?.dueAccounts ?? 0).toString()} icon={ClipboardCheckIcon} isWarning={(stats?.dueAccounts ?? 0) > 0}/>
+        <Card title="Estoque Baixo" value={(stats?.lowStockProducts ?? 0).toString()} icon={PackageWarningIcon} isWarning={(stats?.lowStockProducts ?? 0) > 0} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -67,13 +85,13 @@ const Dashboard = () => {
         <div className="bg-surface-card p-6 rounded-lg shadow-sm">
           <h2 className="text-xl font-semibold mb-4 text-text-primary">Produtos com Estoque Baixo</h2>
           <ul className="space-y-2">
-            {products?.filter(p => p.stock <= p.lowStockThreshold).map(p => (
+            {lowStockProductList.map(p => (
               <li key={p.id} className="flex justify-between items-center text-sm">
                 <span>{p.name}</span>
                 <span className="font-bold text-red-500">{p.stock} un.</span>
               </li>
             ))}
-            {products?.filter(p => p.stock <= p.lowStockThreshold).length === 0 && (
+            {lowStockProductList.length === 0 && (
                 <p className="text-text-muted text-sm">Nenhum produto com estoque baixo.</p>
             )}
           </ul>

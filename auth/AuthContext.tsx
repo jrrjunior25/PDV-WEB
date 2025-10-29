@@ -22,9 +22,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const storedUser = localStorage.getItem('user');
       if (storedUser) {
         const parsedUser = JSON.parse(storedUser);
-        // FIX: Valida se o objeto do usuário parseado é válido antes de usá-lo.
-        // Isso previne que um objeto de usuário corrompido no localStorage quebre o app.
-        if (parsedUser && parsedUser.id && parsedUser.role) {
+        // FIX: Valida se o objeto do usuário parseado é um objeto válido antes de usá-lo.
+        // Isso previne que um valor corrompido (ex: booleano, número) no localStorage quebre o app.
+        if (parsedUser && typeof parsedUser === 'object' && parsedUser.id && parsedUser.role) {
             setUser(parsedUser);
         } else {
             console.warn("Invalid user object found in localStorage. Clearing it.");

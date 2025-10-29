@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Product } from '../types';
 import Modal from './ui/Modal';
 import Button from './ui/Button';
@@ -49,10 +49,18 @@ const ImportXmlModal = ({ isOpen, onClose, xmlData, allProducts, onImportSuccess
     const [isLoading, setIsLoading] = useState(true);
     const [isProcessing, setIsProcessing] = useState(false);
 
+    const isMountedRef = useRef(true);
+    useEffect(() => {
+        isMountedRef.current = true;
+        return () => { isMountedRef.current = false; };
+    }, []);
+
     useEffect(() => {
         if (!isOpen || !xmlData) return;
-        setIsLoading(true);
-        // Simulate a small delay for the loading UI to be noticeable
+        if (isMountedRef.current) {
+            setIsLoading(true);
+        }
+        
         const timer = setTimeout(() => {
             const matchedItems = xmlData.items.map(xmlItem => {
                 // Try to match by barcode (EAN), then by name
@@ -65,8 +73,11 @@ const ImportXmlModal = ({ isOpen, onClose, xmlData, allProducts, onImportSuccess
                     return { ...xmlItem, status: 'new' };
                 }
             });
-            setProcessedItems(matchedItems as ProcessedItem[]);
-            setIsLoading(false);
+
+            if (isMountedRef.current) {
+                setProcessedItems(matchedItems as ProcessedItem[]);
+                setIsLoading(false);
+            }
         }, 500);
 
         return () => clearTimeout(timer);

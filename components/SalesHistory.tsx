@@ -6,6 +6,7 @@ import { ChevronDownIcon, ChevronUpIcon, Undo2Icon } from './icons/Icon';
 import Modal from './ui/Modal';
 import Button from './ui/Button';
 import Input from './ui/Input';
+import ErrorDisplay from './ui/ErrorDisplay';
 import { useAuth } from '../auth/AuthContext';
 
 const statusStyles: { [key in Sale['status']]: string } = {
@@ -127,7 +128,7 @@ const ReturnModal = ({ sale, isOpen, onClose, onReturnProcessed, user }: ReturnM
 };
 
 const SalesHistory = () => {
-  const { data: sales, loading, refetch } = useMockApi<Sale[]>(api.getSales);
+  const { data: sales, loading, error, refetch } = useMockApi<Sale[]>(api.getSales);
   const [expandedSaleId, setExpandedSaleId] = useState<string | null>(null);
   const [returnModalOpen, setReturnModalOpen] = useState(false);
   const [selectedSale, setSelectedSale] = useState<Sale | null>(null);
@@ -142,6 +143,64 @@ const SalesHistory = () => {
     setSelectedSale(sale);
     setReturnModalOpen(true);
   };
+  
+  const renderTableContent = () => {
+    if (loading) {
+      return <tr><td colSpan={canReturn ? 6 : 5} className="text-center py-8">Carregando histórico...</td></tr>;
+    }
+    if (error) {
+      return <tr><td colSpan={canReturn ? 6 : 5} className="p-4"><ErrorDisplay message={error.message} onRetry={refetch} /></td></tr>;
+    }
+    return sales?.map(sale => {
+      const isReturnable = sale.items.some(i => i.returnableQuantity > 0);
+      return (
+      <React.Fragment key={sale.id}>
+        <tr className="bg-surface-card border-b hover:bg-surface-main/50">
+          <td className="px-6 py-4 font-mono text-xs font-medium text-text-primary cursor-pointer" onClick={() => toggleSaleDetails(sale.id)}>{sale.id}</td>
+          <td className="px-6 py-4 cursor-pointer" onClick={() => toggleSaleDetails(sale.id)}>{new Date(sale.date).toLocaleString('pt-BR')}</td>
+          <td className="px-6 py-4 cursor-pointer" onClick={() => toggleSaleDetails(sale.id)}>{sale.customerName || 'N/A'}</td>
+          <td className="px-6 py-4 font-semibold cursor-pointer" onClick={() => toggleSaleDetails(sale.id)}>{sale.totalAmount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+          <td className="px-6 py-4 cursor-pointer" onClick={() => toggleSaleDetails(sale.id)}>
+            <span className={`px-2 py-1 rounded-full text-xs font-semibold ${statusStyles[sale.status]}`}>{sale.status}</span>
+          </td>
+          {canReturn && (
+            <td className="px-6 py-4 text-right">
+              {isReturnable ? (
+                <Button variant="secondary" size="sm" onClick={() => openReturnModal(sale)}><Undo2Icon className="h-4 w-4 mr-1"/> Devolver/Trocar</Button>
+              ) : (
+                <ChevronDownIcon className="h-5 w-5 inline-block cursor-pointer" onClick={() => toggleSaleDetails(sale.id)} />
+              )}
+            </td>
+          )}
+        </tr>
+        {expandedSaleId === sale.id && (
+          <tr className="bg-gray-50">
+            <td colSpan={canReturn ? 6 : 5} className="p-4">
+              <div className="p-4 bg-white rounded-md shadow-inner">
+                <h4 className="font-bold mb-2">Detalhes da Venda</h4>
+                <ul>
+                  {sale.items.map(item => (
+                    <li key={item.productId} className="flex justify-between text-xs py-1 border-b">
+                      <span>{item.productName}</span>
+                      <span>{item.quantity} x {item.unitPrice.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
+                      <span className="font-semibold">{item.totalPrice.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
+                    </li>
+                  ))}
+                </ul>
+                <div className="mt-2 text-xs text-right">
+                  {sale.storeCreditAmountUsed && sale.storeCreditAmountUsed > 0 && (
+                    <p>Pago com Vale-Crédito: <span className="font-semibold">{sale.storeCreditAmountUsed.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span></p>
+                  )}
+                  <p>Pago com {sale.paymentMethod}: <span className="font-semibold">{(sale.totalAmount - (sale.storeCreditAmountUsed || 0)).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span></p>
+                  <p className="font-bold text-sm mt-1">Total: <span className="font-bold">{sale.totalAmount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span></p>
+                </div>
+              </div>
+            </td>
+          </tr>
+        )}
+      </React.Fragment>
+    )});
+  }
 
   return (
     <>
@@ -162,59 +221,7 @@ const SalesHistory = () => {
                 </tr>
               </thead>
               <tbody>
-                {loading ? (
-                  <tr><td colSpan={canReturn ? 6 : 5} className="text-center py-8">Carregando histórico...</td></tr>
-                ) : (
-                  sales?.map(sale => {
-                    const isReturnable = sale.items.some(i => i.returnableQuantity > 0);
-                    return (
-                    <React.Fragment key={sale.id}>
-                      <tr className="bg-surface-card border-b hover:bg-surface-main/50">
-                        <td className="px-6 py-4 font-mono text-xs font-medium text-text-primary cursor-pointer" onClick={() => toggleSaleDetails(sale.id)}>{sale.id}</td>
-                        <td className="px-6 py-4 cursor-pointer" onClick={() => toggleSaleDetails(sale.id)}>{new Date(sale.date).toLocaleString('pt-BR')}</td>
-                        <td className="px-6 py-4 cursor-pointer" onClick={() => toggleSaleDetails(sale.id)}>{sale.customerName || 'N/A'}</td>
-                        <td className="px-6 py-4 font-semibold cursor-pointer" onClick={() => toggleSaleDetails(sale.id)}>{sale.totalAmount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
-                        <td className="px-6 py-4 cursor-pointer" onClick={() => toggleSaleDetails(sale.id)}>
-                          <span className={`px-2 py-1 rounded-full text-xs font-semibold ${statusStyles[sale.status]}`}>{sale.status}</span>
-                        </td>
-                        {canReturn && (
-                          <td className="px-6 py-4 text-right">
-                            {isReturnable ? (
-                              <Button variant="secondary" size="sm" onClick={() => openReturnModal(sale)}><Undo2Icon className="h-4 w-4 mr-1"/> Devolver/Trocar</Button>
-                            ) : (
-                              <ChevronDownIcon className="h-5 w-5 inline-block cursor-pointer" onClick={() => toggleSaleDetails(sale.id)} />
-                            )}
-                          </td>
-                        )}
-                      </tr>
-                      {expandedSaleId === sale.id && (
-                        <tr className="bg-gray-50">
-                          <td colSpan={canReturn ? 6 : 5} className="p-4">
-                            <div className="p-4 bg-white rounded-md shadow-inner">
-                              <h4 className="font-bold mb-2">Detalhes da Venda</h4>
-                              <ul>
-                                {sale.items.map(item => (
-                                  <li key={item.productId} className="flex justify-between text-xs py-1 border-b">
-                                    <span>{item.productName}</span>
-                                    <span>{item.quantity} x {item.unitPrice.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
-                                    <span className="font-semibold">{item.totalPrice.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
-                                  </li>
-                                ))}
-                              </ul>
-                              <div className="mt-2 text-xs text-right">
-                                {sale.storeCreditAmountUsed && sale.storeCreditAmountUsed > 0 && (
-                                  <p>Pago com Vale-Crédito: <span className="font-semibold">{sale.storeCreditAmountUsed.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span></p>
-                                )}
-                                <p>Pago com {sale.paymentMethod}: <span className="font-semibold">{(sale.totalAmount - (sale.storeCreditAmountUsed || 0)).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span></p>
-                                <p className="font-bold text-sm mt-1">Total: <span className="font-bold">{sale.totalAmount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span></p>
-                              </div>
-                            </div>
-                          </td>
-                        </tr>
-                      )}
-                    </React.Fragment>
-                  )})
-                )}
+                {renderTableContent()}
               </tbody>
             </table>
           </div>

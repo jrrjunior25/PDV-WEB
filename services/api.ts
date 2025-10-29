@@ -356,7 +356,17 @@ const createMockApi = () => {
         .reduce((acc, s) => acc + s.amount, 0);
         
       const cashIn = salesSummary['Dinheiro'] || 0;
-      const calculatedClosingBalance = session.openingBalance + cashIn - totalSangrias;
+      let calculatedClosingBalance = session.openingBalance + cashIn - totalSangrias;
+
+      // FIX: Ensure the final calculated balance is always a valid number to prevent data corruption.
+      if (isNaN(calculatedClosingBalance)) {
+        console.error("Error calculating closing balance, resulted in NaN. Defaulting to 0.", {
+            opening: session.openingBalance,
+            cashIn,
+            sangrias: totalSangrias,
+        });
+        calculatedClosingBalance = 0;
+      }
 
       session.closingTime = new Date().toISOString();
       session.status = 'fechado';

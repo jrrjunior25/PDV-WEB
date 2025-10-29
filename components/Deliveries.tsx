@@ -4,6 +4,7 @@ import { useMockApi } from '../hooks/useMockApi';
 import { Delivery } from '../types';
 import Button from './ui/Button';
 import Modal from './ui/Modal';
+import ErrorDisplay from './ui/ErrorDisplay';
 import { TruckIcon } from './icons/Icon';
 
 const statusStyles: { [key in Delivery['status']]: string } = {
@@ -48,16 +49,45 @@ const TrackingMap = ({ history }: TrackingMapProps) => {
 };
 
 const Deliveries = () => {
-  const { data: deliveries, loading, refetch } = useMockApi<Delivery[]>(api.getDeliveries);
+  const { data: deliveries, loading, error, refetch } = useMockApi<Delivery[]>(api.getDeliveries);
   const [selectedDelivery, setSelectedDelivery] = useState<Delivery | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
 
   const handleUpdateStatus = async (id: string, status: Delivery['status']) => {
     setIsUpdating(true);
-    await api.updateDeliveryStatus(id, status);
-    refetch();
-    setSelectedDelivery(prev => prev ? { ...prev, status } : null);
-    setIsUpdating(false);
+    try {
+      await api.updateDeliveryStatus(id, status);
+      refetch();
+      setSelectedDelivery(prev => prev ? { ...prev, status } : null);
+    } catch (e: any) {
+      alert(`Erro ao atualizar status da entrega: ${e.message}`);
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const renderTableContent = () => {
+    if (loading) {
+      return <tr><td colSpan={5} className="text-center py-8">Carregando entregas...</td></tr>;
+    }
+    if (error) {
+      return <tr><td colSpan={5} className="p-4"><ErrorDisplay message={error.message} onRetry={refetch} /></td></tr>;
+    }
+    return deliveries?.map(delivery => (
+      <tr key={delivery.id} className="bg-surface-card border-b hover:bg-surface-main/50">
+        <td className="px-6 py-4">{new Date(delivery.createdAt).toLocaleDateString('pt-BR')}</td>
+        <td className="px-6 py-4 font-medium text-text-primary">{delivery.customerName}</td>
+        <td className="px-6 py-4 truncate max-w-xs">{delivery.address}</td>
+        <td className="px-6 py-4">
+          <span className={`px-2 py-1 rounded-full text-xs font-semibold ${statusStyles[delivery.status]}`}>
+            {delivery.status}
+          </span>
+        </td>
+        <td className="px-6 py-4 text-right">
+          <Button variant="ghost" size="sm" onClick={() => setSelectedDelivery(delivery)}>Ver Detalhes</Button>
+        </td>
+      </tr>
+    ));
   };
 
   return (
@@ -77,25 +107,7 @@ const Deliveries = () => {
               </tr>
             </thead>
             <tbody>
-              {loading ? (
-                <tr><td colSpan={5} className="text-center py-8">Carregando entregas...</td></tr>
-              ) : (
-                deliveries?.map(delivery => (
-                  <tr key={delivery.id} className="bg-surface-card border-b hover:bg-surface-main/50">
-                    <td className="px-6 py-4">{new Date(delivery.createdAt).toLocaleDateString('pt-BR')}</td>
-                    <td className="px-6 py-4 font-medium text-text-primary">{delivery.customerName}</td>
-                    <td className="px-6 py-4 truncate max-w-xs">{delivery.address}</td>
-                    <td className="px-6 py-4">
-                      <span className={`px-2 py-1 rounded-full text-xs font-semibold ${statusStyles[delivery.status]}`}>
-                        {delivery.status}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <Button variant="ghost" size="sm" onClick={() => setSelectedDelivery(delivery)}>Ver Detalhes</Button>
-                    </td>
-                  </tr>
-                ))
-              )}
+              {renderTableContent()}
             </tbody>
           </table>
         </div>

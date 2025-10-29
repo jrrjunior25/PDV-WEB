@@ -4,17 +4,25 @@ import { useMockApi } from '../hooks/useMockApi';
 import { Product, Sale, ProductCategory, ChartData, CashRegisterSession } from '../types';
 import Card from './ui/Card';
 import Chart from './ui/Chart';
+import ErrorDisplay from './ui/ErrorDisplay';
 import { DollarSignIcon, ShoppingBagIcon, PackageIcon, BarChart3Icon, ChevronDownIcon, ChevronUpIcon } from './icons/Icon';
 
 const Reports = () => {
-  const { data: sales, loading: loadingSales } = useMockApi<Sale[]>(api.getSales);
-  const { data: products, loading: loadingProducts } = useMockApi<Product[]>(api.getProducts);
-  const { data: categories, loading: loadingCategories } = useMockApi<ProductCategory[]>(api.getProductCategories);
-  const { data: cashSessions, loading: loadingCashSessions } = useMockApi<CashRegisterSession[]>(api.getCashRegisterSessions);
+  const { data: sales, loading: loadingSales, error: salesError, refetch: refetchSales } = useMockApi<Sale[]>(api.getSales);
+  const { data: products, loading: loadingProducts, error: productsError, refetch: refetchProducts } = useMockApi<Product[]>(api.getProducts);
+  const { data: categories, loading: loadingCategories, error: categoriesError, refetch: refetchCategories } = useMockApi<ProductCategory[]>(api.getProductCategories);
+  const { data: cashSessions, loading: loadingCashSessions, error: cashSessionsError, refetch: refetchCashSessions } = useMockApi<CashRegisterSession[]>(api.getCashRegisterSessions);
 
   const [expandedSessionId, setExpandedSessionId] = useState<string | null>(null);
 
   const loading = loadingSales || loadingProducts || loadingCategories || loadingCashSessions;
+  const error = salesError || productsError || categoriesError || cashSessionsError;
+  const refetchAll = () => {
+    refetchSales();
+    refetchProducts();
+    refetchCategories();
+    refetchCashSessions();
+  };
 
   const reportData = useMemo(() => {
     if (!sales || !products || !categories) return null;
@@ -63,6 +71,10 @@ const Reports = () => {
   if (loading) {
     return <div className="flex justify-center items-center h-full"><div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-brand-primary"></div></div>;
   }
+  
+  if (error) {
+    return <div className="flex justify-center items-center h-full p-4"><ErrorDisplay message={`Não foi possível carregar os dados para os relatórios. ${error.message}`} onRetry={refetchAll} /></div>;
+  }
 
   return (
     <div className="space-y-6">
@@ -70,9 +82,9 @@ const Reports = () => {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         <Card title="Receita Total" value={reportData?.totalRevenue ?? 'R$ 0,00'} icon={DollarSignIcon} />
-        <Card title="Total de Vendas" value={reportData?.totalSales.toString() ?? '0'} icon={ShoppingBagIcon} />
+        <Card title="Total de Vendas" value={(reportData?.totalSales ?? 0).toString()} icon={ShoppingBagIcon} />
         <Card title="Ticket Médio" value={reportData?.averageTicket ?? 'R$ 0,00'} icon={BarChart3Icon} />
-        <Card title="Itens Vendidos" value={reportData?.totalItemsSold.toString() ?? '0'} icon={PackageIcon} />
+        <Card title="Itens Vendidos" value={(reportData?.totalItemsSold ?? 0).toString()} icon={PackageIcon} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -83,7 +95,7 @@ const Reports = () => {
         <div className="bg-surface-card p-6 rounded-lg shadow-sm">
           <h2 className="text-xl font-semibold mb-4 text-text-primary">Top 5 Produtos Mais Vendidos (por receita)</h2>
            <ul className="space-y-3">
-            {reportData?.topProducts.map(p => (
+            {(reportData?.topProducts ?? []).map(p => (
               <li key={p.name} className="flex justify-between items-center text-sm">
                 <div>
                     <p className="font-semibold">{p.name}</p>

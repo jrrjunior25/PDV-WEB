@@ -5,11 +5,12 @@ import { Supplier } from '../types';
 import Button from './ui/Button';
 import Modal from './ui/Modal';
 import Input from './ui/Input';
+import ErrorDisplay from './ui/ErrorDisplay';
 import { useAuth } from '../auth/AuthContext';
 import { PlusIcon, EditIcon } from './icons/Icon';
 
 const Suppliers = () => {
-  const { data: suppliers, loading, refetch } = useMockApi<Supplier[]>(api.getSuppliers);
+  const { data: suppliers, loading, error, refetch } = useMockApi<Supplier[]>(api.getSuppliers);
   const [isModalOpen, setModalOpen] = useState(false);
   const [editingSupplier, setEditingSupplier] = useState<Partial<Supplier> | null>(null);
   const { user } = useAuth();
@@ -33,10 +34,38 @@ const Suppliers = () => {
 
   const handleSave = async () => {
     if (!editingSupplier) return;
-    await api.saveSupplier(editingSupplier as Supplier);
-    refetch();
-    closeModal();
+    try {
+      await api.saveSupplier(editingSupplier as Supplier);
+      refetch();
+      closeModal();
+    } catch(e: any) {
+      alert(`Erro ao salvar fornecedor: ${e.message}`);
+    }
   };
+
+  const renderTableContent = () => {
+    if (loading) {
+      return <tr><td colSpan={isAdmin ? 5 : 4} className="text-center py-8">Carregando...</td></tr>;
+    }
+    if (error) {
+      return <tr><td colSpan={isAdmin ? 5 : 4} className="p-4"><ErrorDisplay message={error.message} onRetry={refetch} /></td></tr>;
+    }
+    return suppliers?.map(supplier => (
+      <tr key={supplier.id} className="bg-surface-card border-b hover:bg-surface-main/50">
+        <td className="px-6 py-4 font-medium text-text-primary">{supplier.name}</td>
+        <td className="px-6 py-4">{supplier.cnpj}</td>
+        <td className="px-6 py-4">{supplier.contactPerson}</td>
+        <td className="px-6 py-4">{supplier.phone}</td>
+        {isAdmin && (
+          <td className="px-6 py-4 text-right">
+            <Button variant="ghost" size="sm" onClick={() => openModal(supplier)}>
+              <EditIcon className="h-4 w-4"/>
+            </Button>
+          </td>
+        )}
+      </tr>
+    ));
+  }
 
   return (
     <div className="space-y-6">
@@ -60,25 +89,7 @@ const Suppliers = () => {
               </tr>
             </thead>
             <tbody>
-              {loading ? (
-                <tr><td colSpan={isAdmin ? 5 : 4} className="text-center py-8">Carregando...</td></tr>
-              ) : (
-                suppliers?.map(supplier => (
-                  <tr key={supplier.id} className="bg-surface-card border-b hover:bg-surface-main/50">
-                    <td className="px-6 py-4 font-medium text-text-primary">{supplier.name}</td>
-                    <td className="px-6 py-4">{supplier.cnpj}</td>
-                    <td className="px-6 py-4">{supplier.contactPerson}</td>
-                    <td className="px-6 py-4">{supplier.phone}</td>
-                    {isAdmin && (
-                      <td className="px-6 py-4 text-right">
-                        <Button variant="ghost" size="sm" onClick={() => openModal(supplier)}>
-                          <EditIcon className="h-4 w-4"/>
-                        </Button>
-                      </td>
-                    )}
-                  </tr>
-                ))
-              )}
+              {renderTableContent()}
             </tbody>
           </table>
         </div>

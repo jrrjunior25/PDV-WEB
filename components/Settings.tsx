@@ -1,30 +1,51 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { api } from '../services/api';
 import { SystemSettings } from '../types';
 import Button from './ui/Button';
 import Input from './ui/Input';
+import ErrorDisplay from './ui/ErrorDisplay';
 import { useAuth } from '../auth/AuthContext';
 import { AlertTriangleIcon } from './icons/Icon';
 
 const Settings = () => {
   const [settings, setSettings] = useState<Partial<SystemSettings>>({});
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const { user } = useAuth();
 
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  const fetchSettings = async () => {
+    if (isMountedRef.current) {
+      setLoading(true);
+      setError(null);
+    }
+    try {
+      const data = await api.getSettings();
+      if (isMountedRef.current) {
+        setSettings(data);
+      }
+    } catch (error: any) {
+      if (isMountedRef.current) {
+        setError(error.message);
+      }
+      console.error("Failed to fetch settings", error);
+    } finally {
+      if (isMountedRef.current) {
+        setLoading(false);
+      }
+    }
+  };
+
   useEffect(() => {
     if (user?.role === 'administrador') {
-      const fetchSettings = async () => {
-        setLoading(true);
-        try {
-          const data = await api.getSettings();
-          setSettings(data);
-        } catch (error) {
-          console.error("Failed to fetch settings", error);
-        } finally {
-          setLoading(false);
-        }
-      };
       fetchSettings();
     }
   }, [user]);
@@ -39,9 +60,9 @@ const Settings = () => {
     try {
       await api.saveSettings(settings as SystemSettings);
       alert('Configurações salvas com sucesso!');
-    } catch (error) {
+    } catch (error: any) {
       console.error("Failed to save settings", error);
-      alert('Erro ao salvar as configurações.');
+      alert(`Erro ao salvar as configurações: ${error.message}`);
     } finally {
       setIsSaving(false);
     }
@@ -59,6 +80,10 @@ const Settings = () => {
 
   if (loading) {
     return <div className="flex justify-center items-center h-full"><div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-brand-primary"></div></div>;
+  }
+  
+  if (error) {
+    return <div className="flex justify-center items-center h-full p-4"><ErrorDisplay message={`Não foi possível carregar as configurações. ${error}`} onRetry={fetchSettings} /></div>
   }
 
   return (

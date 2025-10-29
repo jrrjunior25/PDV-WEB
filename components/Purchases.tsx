@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { api } from '../services/api';
 import { useMockApi } from '../hooks/useMockApi';
@@ -6,6 +5,7 @@ import { PurchaseOrder, Supplier, Product, PurchaseOrderItem } from '../types';
 import Button from './ui/Button';
 import Modal from './ui/Modal';
 import Input from './ui/Input';
+import ErrorDisplay from './ui/ErrorDisplay';
 import { PlusIcon, SearchIcon, Trash2Icon, UploadCloudIcon } from './icons/Icon';
 import ImportXmlModal from './ImportXmlModal';
 
@@ -84,10 +84,14 @@ const PurchaseOrderModal = ({ isOpen, onClose, onSave, suppliers, products }: Pu
         if (!supplier) return;
 
         const newPO = { supplierId, supplierName: supplier.name, items, totalAmount };
-        await api.savePurchaseOrder(newPO);
-        onSave();
-        onClose();
-        setItems([]);
+        try {
+            await api.savePurchaseOrder(newPO);
+            onSave();
+            onClose();
+            setItems([]);
+        } catch (e: any) {
+            alert(`Erro ao salvar pedido de compra: ${e.message}`);
+        }
     };
     
     return (
@@ -150,9 +154,13 @@ const ReceiveStockModal = ({ po, isOpen, onClose, onSave }: ReceiveStockModalPro
             alert("Informe a quantidade recebida para ao menos um item.");
             return;
         }
-        await api.receiveStock(po.id, receivedItems);
-        onSave();
-        onClose();
+        try {
+            await api.receiveStock(po.id, receivedItems);
+            onSave();
+            onClose();
+        } catch (e: any) {
+            alert(`Erro ao receber estoque: ${e.message}`);
+        }
     };
 
     return (
@@ -184,9 +192,17 @@ const ReceiveStockModal = ({ po, isOpen, onClose, onSave }: ReceiveStockModalPro
 
 
 const Purchases = () => {
-  const { data: purchaseOrders, loading, refetch } = useMockApi<PurchaseOrder[]>(api.getPurchaseOrders);
-  const { data: suppliers } = useMockApi<Supplier[]>(api.getSuppliers);
-  const { data: products } = useMockApi<Product[]>(api.getProducts);
+  const { data: purchaseOrders, loading: loadingPO, error: poError, refetch: refetchPO } = useMockApi<PurchaseOrder[]>(api.getPurchaseOrders);
+  const { data: suppliers, loading: loadingSuppliers, error: suppliersError, refetch: refetchSuppliers } = useMockApi<Supplier[]>(api.getSuppliers);
+  const { data: products, loading: loadingProducts, error: productsError, refetch: refetchProducts } = useMockApi<Product[]>(api.getProducts);
+
+  const loading = loadingPO || loadingSuppliers || loadingProducts;
+  const error = poError || suppliersError || productsError;
+  const refetchAll = () => {
+    refetchPO();
+    refetchSuppliers();
+    refetchProducts();
+  };
 
   const [isPoModalOpen, setIsPoModalOpen] = useState(false);
   const [isReceiveModalOpen, setIsReceiveModalOpen] = useState(false);
@@ -225,15 +241,17 @@ const Purchases = () => {
               xmlDoc.querySelectorAll('det').forEach(det => {
                   const prod = det.querySelector('prod');
                   if (!prod) return;
+                  // FIX: Safely parse numbers from XML to prevent NaN values, even if the content is non-numeric text.
+                  const costPrice = parseFloat(getText('vUnCom', prod)) || 0;
                   const item = {
                       name: getText('xProd', prod),
-                      quantity: parseFloat(getText('qCom', prod) || '0'),
-                      costPrice: parseFloat(getText('vUnCom', prod) || '0'),
+                      quantity: parseFloat(getText('qCom', prod)) || 0,
+                      costPrice: costPrice,
                       barcode: getText('cEAN', prod) || getText('cProd', prod),
                       ncm: getText('NCM', prod),
                       cfop: getText('CFOP', prod),
                       description: '',
-                      price: parseFloat(getText('vUnCom', prod) || '0') * 1.5, // Sugere preço de venda com 50% de margem
+                      price: costPrice * 1.5, // Sugere preço de venda com 50% de margem
                       stock: 0,
                       lowStockThreshold: 10,
                       categoryId: '',
@@ -248,7 +266,7 @@ const Purchases = () => {
                 throw new Error("Nenhum produto encontrado no arquivo XML.");
               }
 
-              const totalAmount = parseFloat(getText('total > ICMSTot > vNF') || '0');
+              const totalAmount = parseFloat(getText('total > ICMSTot > vNF')) || 0;
 
               setXmlData({ supplier, items, totalAmount });
               setIsImportModalOpen(true);
@@ -275,6 +293,32 @@ const Purchases = () => {
     setSelectedPo(null);
     setIsReceiveModalOpen(false);
   }
+  
+  const renderTableContent = () => {
+    if (loading) {
+      return <tr><td colSpan={5} className="text-center py-8">Carregando...</td></tr>;
+    }
+    if (error) {
+      return <tr><td colSpan={5} className="p-4"><ErrorDisplay message={`Não foi possível carregar os dados de compras. ${error.message}`} onRetry={refetchAll} /></td></tr>;
+    }
+    return purchaseOrders?.map(po => (
+      <tr key={po.id} className="bg-surface-card border-b hover:bg-surface-main/50">
+        <td className="px-6 py-4">{new Date(po.createdAt).toLocaleDateString('pt-BR')}</td>
+        <td className="px-6 py-4 font-medium text-text-primary">{po.supplierName}</td>
+        <td className="px-6 py-4 font-semibold">{po.totalAmount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+        <td className="px-6 py-4">
+          <span className={`px-2 py-1 rounded-full text-xs font-semibold ${statusStyles[po.status]}`}>
+            {po.status}
+          </span>
+        </td>
+        <td className="px-6 py-4 text-right">
+          {po.status !== 'Recebido' && (
+            <Button variant="secondary" size="sm" onClick={() => handleOpenReceiveModal(po)}>Receber Estoque</Button>
+          )}
+        </td>
+      </tr>
+    ));
+  }
 
   return (
     <div className="space-y-6">
@@ -300,27 +344,7 @@ const Purchases = () => {
               </tr>
             </thead>
             <tbody>
-              {loading ? (
-                <tr><td colSpan={5} className="text-center py-8">Carregando...</td></tr>
-              ) : (
-                purchaseOrders?.map(po => (
-                  <tr key={po.id} className="bg-surface-card border-b hover:bg-surface-main/50">
-                    <td className="px-6 py-4">{new Date(po.createdAt).toLocaleDateString('pt-BR')}</td>
-                    <td className="px-6 py-4 font-medium text-text-primary">{po.supplierName}</td>
-                    <td className="px-6 py-4 font-semibold">{po.totalAmount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
-                    <td className="px-6 py-4">
-                      <span className={`px-2 py-1 rounded-full text-xs font-semibold ${statusStyles[po.status]}`}>
-                        {po.status}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      {po.status !== 'Recebido' && (
-                        <Button variant="secondary" size="sm" onClick={() => handleOpenReceiveModal(po)}>Receber Estoque</Button>
-                      )}
-                    </td>
-                  </tr>
-                ))
-              )}
+              {renderTableContent()}
             </tbody>
           </table>
         </div>
@@ -330,7 +354,7 @@ const Purchases = () => {
         <PurchaseOrderModal 
             isOpen={isPoModalOpen}
             onClose={() => setIsPoModalOpen(false)}
-            onSave={refetch}
+            onSave={refetchPO}
             suppliers={suppliers}
             products={products}
         />
@@ -340,7 +364,7 @@ const Purchases = () => {
             po={selectedPo}
             isOpen={isReceiveModalOpen}
             onClose={handleCloseReceiveModal}
-            onSave={refetch}
+            onSave={refetchPO}
         />
       )}
       {isImportModalOpen && xmlData && products && (
@@ -350,7 +374,7 @@ const Purchases = () => {
             xmlData={xmlData}
             allProducts={products}
             onImportSuccess={() => {
-                refetch();
+                refetchAll();
             }}
         />
       )}

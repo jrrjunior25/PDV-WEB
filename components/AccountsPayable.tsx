@@ -5,16 +5,24 @@ import { AccountPayable, Supplier } from '../types';
 import Button from './ui/Button';
 import Modal from './ui/Modal';
 import Input from './ui/Input';
+import ErrorDisplay from './ui/ErrorDisplay';
 import { useAuth } from '../auth/AuthContext';
 import { PlusIcon } from './icons/Icon';
 
 const AccountsPayable = () => {
-  const { data: accounts, loading, refetch } = useMockApi<AccountPayable[]>(api.getAccountsPayable);
-  const { data: suppliers } = useMockApi<Supplier[]>(api.getSuppliers);
+  const { data: accounts, loading: loadingAccounts, error: accountsError, refetch: refetchAccounts } = useMockApi<AccountPayable[]>(api.getAccountsPayable);
+  const { data: suppliers, loading: loadingSuppliers, error: suppliersError, refetch: refetchSuppliers } = useMockApi<Supplier[]>(api.getSuppliers);
   const [isModalOpen, setModalOpen] = useState(false);
   const [newAccount, setNewAccount] = useState<Partial<Omit<AccountPayable, 'id' | 'supplierName'>>>({});
   const { user } = useAuth();
   const isAdmin = user?.role === 'administrador';
+
+  const loading = loadingAccounts || loadingSuppliers;
+  const error = accountsError || suppliersError;
+  const refetchAll = () => {
+    refetchAccounts();
+    refetchSuppliers();
+  };
 
   const openModal = () => {
     setNewAccount({ description: '', amount: 0, dueDate: '', supplierId: suppliers?.[0]?.id || '', status: 'Pendente' });
@@ -37,19 +45,60 @@ const AccountsPayable = () => {
         alert("Preencha todos os campos obrigatórios.");
         return;
     }
-    await api.saveAccountPayable(newAccount as any);
-    refetch();
-    closeModal();
+    try {
+      await api.saveAccountPayable(newAccount as any);
+      refetchAccounts();
+      closeModal();
+    } catch (e: any) {
+      alert(`Erro ao salvar conta a pagar: ${e.message}`);
+    }
   };
   
   const handleMarkAsPaid = async (id: string) => {
-    await api.updateAccountPayableStatus(id, 'Paga');
-    refetch();
+    try {
+      await api.updateAccountPayableStatus(id, 'Paga');
+      refetchAccounts();
+    } catch(e: any) {
+      alert(`Erro ao atualizar status: ${e.message}`);
+    }
   };
   
   const isOverdue = (dueDate: string, status: string) => {
     return status === 'Pendente' && new Date(dueDate) < new Date();
   };
+
+  const renderTableContent = () => {
+    if (loading) {
+      return <tr><td colSpan={isAdmin ? 6 : 5} className="text-center py-8">Carregando...</td></tr>;
+    }
+    if (error) {
+      return <tr><td colSpan={isAdmin ? 6 : 5} className="p-4"><ErrorDisplay message={error.message} onRetry={refetchAll} /></td></tr>;
+    }
+    return accounts?.map(account => (
+      <tr key={account.id} className={`border-b ${isOverdue(account.dueDate, account.status) ? 'bg-red-50' : 'bg-surface-card hover:bg-surface-main/50'}`}>
+        <td className="px-6 py-4 font-medium text-text-primary">{account.supplierName}</td>
+        <td className="px-6 py-4">{account.description}</td>
+        <td className={`px-6 py-4 ${isOverdue(account.dueDate, account.status) ? 'font-bold text-red-600' : ''}`}>
+            {new Date(account.dueDate).toLocaleDateString('pt-BR')}
+        </td>
+        <td className="px-6 py-4 font-semibold">{account.amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+        <td className="px-6 py-4">
+            <span className={`px-2 py-1 rounded-full text-xs font-semibold ${account.status === 'Paga' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
+                {account.status}
+            </span>
+        </td>
+        {isAdmin && (
+          <td className="px-6 py-4 text-right">
+            {account.status === 'Pendente' && (
+              <Button variant="ghost" size="sm" onClick={() => handleMarkAsPaid(account.id)}>
+                Marcar como Paga
+              </Button>
+            )}
+          </td>
+        )}
+      </tr>
+    ));
+  }
 
   return (
     <div className="space-y-6">
@@ -74,34 +123,7 @@ const AccountsPayable = () => {
               </tr>
             </thead>
             <tbody>
-              {loading ? (
-                <tr><td colSpan={isAdmin ? 6 : 5} className="text-center py-8">Carregando...</td></tr>
-              ) : (
-                accounts?.map(account => (
-                  <tr key={account.id} className={`border-b ${isOverdue(account.dueDate, account.status) ? 'bg-red-50' : 'bg-surface-card hover:bg-surface-main/50'}`}>
-                    <td className="px-6 py-4 font-medium text-text-primary">{account.supplierName}</td>
-                    <td className="px-6 py-4">{account.description}</td>
-                    <td className={`px-6 py-4 ${isOverdue(account.dueDate, account.status) ? 'font-bold text-red-600' : ''}`}>
-                        {new Date(account.dueDate).toLocaleDateString('pt-BR')}
-                    </td>
-                    <td className="px-6 py-4 font-semibold">{account.amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
-                    <td className="px-6 py-4">
-                        <span className={`px-2 py-1 rounded-full text-xs font-semibold ${account.status === 'Paga' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
-                            {account.status}
-                        </span>
-                    </td>
-                    {isAdmin && (
-                      <td className="px-6 py-4 text-right">
-                        {account.status === 'Pendente' && (
-                          <Button variant="ghost" size="sm" onClick={() => handleMarkAsPaid(account.id)}>
-                            Marcar como Paga
-                          </Button>
-                        )}
-                      </td>
-                    )}
-                  </tr>
-                ))
-              )}
+              {renderTableContent()}
             </tbody>
           </table>
         </div>

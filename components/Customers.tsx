@@ -5,6 +5,7 @@ import { Customer, Sale, StoreCredit } from '../types';
 import Button from './ui/Button';
 import { PlusIcon, TicketIcon } from './icons/Icon';
 import Modal from './ui/Modal';
+import ErrorDisplay from './ui/ErrorDisplay';
 import { useAuth } from '../auth/AuthContext';
 
 interface CustomerDetailModalProps {
@@ -16,8 +17,10 @@ interface CustomerDetailModalProps {
 }
 
 const CustomerDetailModal = ({ customer, sales, storeCredits, isOpen, onClose }: CustomerDetailModalProps) => {
-    const customerSales = useMemo(() => sales.filter(s => s.customerId === customer.id), [sales, customer.id]);
-    const customerCredits = useMemo(() => storeCredits.filter(c => c.customerId === customer.id && c.status === 'Active'), [storeCredits, customer.id]);
+    // FIX: Made the component more robust by safely handling potentially null props,
+    // preventing crashes from race conditions during data loading.
+    const customerSales = useMemo(() => (sales || []).filter(s => s.customerId === customer.id), [sales, customer.id]);
+    const customerCredits = useMemo(() => (storeCredits || []).filter(c => c.customerId === customer.id && c.status === 'Active'), [storeCredits, customer.id]);
     
     return (
         <Modal isOpen={isOpen} onClose={onClose} title={`Detalhes de ${customer.name}`}>
@@ -66,11 +69,36 @@ const CustomerDetailModal = ({ customer, sales, storeCredits, isOpen, onClose }:
 
 const Customers = () => {
   const { user } = useAuth();
-  const { data: customers, loading } = useMockApi<Customer[]>(api.getCustomers);
-  const { data: sales } = useMockApi<Sale[]>(api.getSales);
-  const { data: storeCredits } = useMockApi<StoreCredit[]>(api.getStoreCredits);
+  const { data: customers, loading: loadingCustomers, error: customersError, refetch: refetchCustomers } = useMockApi<Customer[]>(api.getCustomers);
+  const { data: sales, loading: loadingSales, error: salesError, refetch: refetchSales } = useMockApi<Sale[]>(api.getSales);
+  const { data: storeCredits, loading: loadingCredits, error: creditsError, refetch: refetchCredits } = useMockApi<StoreCredit[]>(api.getStoreCredits);
+  
+  const loading = loadingCustomers || loadingSales || loadingCredits;
+  const error = customersError || salesError || creditsError;
+  const refetchAll = () => {
+    refetchCustomers();
+    refetchSales();
+    refetchCredits();
+  };
 
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+
+  const renderTableContent = () => {
+    if (loading) {
+      return <tr><td colSpan={4} className="text-center py-8">Carregando clientes...</td></tr>;
+    }
+    if (error) {
+      return <tr><td colSpan={4} className="p-4"><ErrorDisplay message={`Não foi possível carregar os dados dos clientes. ${error.message}`} onRetry={refetchAll} /></td></tr>;
+    }
+    return customers?.filter(c => c.name !== 'Consumidor Final').map(customer => (
+      <tr key={customer.id} className="bg-surface-card border-b hover:bg-surface-main/50 cursor-pointer" onClick={() => setSelectedCustomer(customer)}>
+          <td className="px-6 py-4 font-medium text-text-primary">{customer.name}</td>
+          <td className="px-6 py-4">{customer.cpfCnpj}</td>
+          <td className="px-6 py-4">{customer.email}</td>
+          <td className="px-6 py-4">{customer.phone}</td>
+      </tr>
+    ));
+  }
 
   return (
     <>
@@ -96,18 +124,7 @@ const Customers = () => {
                         </tr>
                     </thead>
                     <tbody>
-                        {loading ? (
-                            <tr><td colSpan={4} className="text-center py-8">Carregando clientes...</td></tr>
-                        ) : (
-                            customers?.filter(c => c.name !== 'Consumidor Final').map(customer => (
-                                <tr key={customer.id} className="bg-surface-card border-b hover:bg-surface-main/50 cursor-pointer" onClick={() => setSelectedCustomer(customer)}>
-                                    <td className="px-6 py-4 font-medium text-text-primary">{customer.name}</td>
-                                    <td className="px-6 py-4">{customer.cpfCnpj}</td>
-                                    <td className="px-6 py-4">{customer.email}</td>
-                                    <td className="px-6 py-4">{customer.phone}</td>
-                                </tr>
-                            ))
-                        )}
+                        {renderTableContent()}
                     </tbody>
                 </table>
             </div>

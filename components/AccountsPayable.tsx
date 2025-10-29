@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { api } from '../services/api';
 import { useMockApi } from '../hooks/useMockApi';
 import { AccountPayable, Supplier } from '../types';

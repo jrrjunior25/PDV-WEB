@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { api } from '../services/api';
 import { useMockApi } from '../hooks/useMockApi';
 import { Delivery } from '../types';
@@ -22,7 +22,7 @@ interface TrackingMapProps {
 const TrackingMap = ({ history }: TrackingMapProps) => {
     const [position, setPosition] = useState(0);
 
-    React.useEffect(() => {
+    useEffect(() => {
         if (!history || history.length === 0) return;
         const interval = setInterval(() => {
             setPosition(prev => (prev + 5) % 100);

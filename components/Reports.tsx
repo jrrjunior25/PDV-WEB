@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import { useMemo, useState, Fragment } from 'react';
 import { api } from '../services/api';
 import { useMockApi } from '../hooks/useMockApi';
 import { Product, Sale, ProductCategory, ChartData, CashRegisterSession } from '../types';
@@ -128,7 +128,7 @@ const Reports = () => {
                     ? session.closingBalance - session.calculatedClosingBalance
                     : 0;
                   return (
-                    <React.Fragment key={session.id}>
+                    <Fragment key={session.id}>
                         <tr className="border-b cursor-pointer hover:bg-surface-main/50" onClick={() => setExpandedSessionId(prev => prev === session.id ? null : session.id)}>
                             <td className="px-6 py-4">{new Date(session.openingTime).toLocaleString('pt-BR')}</td>
                             <td className="px-6 py-4">{session.operatorName}</td>
@@ -166,7 +166,7 @@ const Reports = () => {
                                 </td>
                             </tr>
                         )}
-                    </React.Fragment>
+                    </Fragment>
                   )
               })}
             </tbody>

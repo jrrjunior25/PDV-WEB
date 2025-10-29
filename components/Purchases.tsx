@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { api } from '../services/api';
 import { useMockApi } from '../hooks/useMockApi';
 import { PurchaseOrder, Supplier, Product, PurchaseOrderItem } from '../types';

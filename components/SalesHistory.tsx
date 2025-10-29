@@ -1,8 +1,8 @@
-import React, { useState, useMemo } from 'react';
+import { useState, useMemo, Fragment } from 'react';
 import { api } from '../services/api';
 import { useMockApi } from '../hooks/useMockApi';
 import { Sale, ReturnItem, User } from '../types';
-import { ChevronDownIcon, ChevronUpIcon, Undo2Icon } from './icons/Icon';
+import { ChevronDownIcon, ChevronUpIcon, Undo2Icon, DownloadIcon } from './icons/Icon';
 import Modal from './ui/Modal';
 import Button from './ui/Button';
 import Input from './ui/Input';
@@ -144,6 +144,55 @@ const SalesHistory = () => {
     setReturnModalOpen(true);
   };
   
+  const handleExportCSV = () => {
+    if (!sales || sales.length === 0) {
+        alert("Não há dados de vendas para exportar.");
+        return;
+    }
+
+    const escapeCell = (cell: string | number | undefined): string => {
+        const str = String(cell ?? '');
+        if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+            return `"${str.replace(/"/g, '""')}"`;
+        }
+        return str;
+    };
+    
+    const headers = [
+        'ID da Venda', 'Data', 'Cliente', 'Total (R$)', 'Status', 'Método de Pagamento', 'Itens'
+    ];
+    
+    const rows = sales.map(sale => {
+        const itemsString = sale.items
+            .map(item => `${item.productName} (Qtd: ${item.quantity}, Preço Un: ${item.unitPrice.toFixed(2)})`)
+            .join('; ');
+
+        return [
+            sale.id,
+            new Date(sale.date).toLocaleString('pt-BR'),
+            sale.customerName || 'N/A',
+            sale.totalAmount.toFixed(2),
+            sale.status,
+            sale.paymentMethod,
+            itemsString
+        ].map(escapeCell).join(',');
+    });
+    
+    const csvContent = [headers.join(','), ...rows].join('\n');
+    
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    if (link.download !== undefined) {
+        const url = URL.createObjectURL(blob);
+        link.setAttribute('href', url);
+        link.setAttribute('download', 'historico_vendas.csv');
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
+  };
+  
   const renderTableContent = () => {
     if (loading) {
       return <tr><td colSpan={canReturn ? 6 : 5} className="text-center py-8">Carregando histórico...</td></tr>;
@@ -154,7 +203,7 @@ const SalesHistory = () => {
     return sales?.map(sale => {
       const isReturnable = sale.items.some(i => i.returnableQuantity > 0);
       return (
-      <React.Fragment key={sale.id}>
+      <Fragment key={sale.id}>
         <tr className="bg-surface-card border-b hover:bg-surface-main/50">
           <td className="px-6 py-4 font-mono text-xs font-medium text-text-primary cursor-pointer" onClick={() => toggleSaleDetails(sale.id)}>{sale.id}</td>
           <td className="px-6 py-4 cursor-pointer" onClick={() => toggleSaleDetails(sale.id)}>{new Date(sale.date).toLocaleString('pt-BR')}</td>
@@ -198,14 +247,20 @@ const SalesHistory = () => {
             </td>
           </tr>
         )}
-      </React.Fragment>
+      </Fragment>
     )});
   }
 
   return (
     <>
       <div className="space-y-6">
-        <h1 className="text-3xl font-bold text-text-primary">Histórico de Vendas</h1>
+        <div className="flex justify-between items-center">
+            <h1 className="text-3xl font-bold text-text-primary">Histórico de Vendas</h1>
+            <Button onClick={handleExportCSV} variant="secondary">
+                <DownloadIcon className="h-5 w-5 mr-2"/>
+                Exportar CSV
+            </Button>
+        </div>
         
         <div className="bg-surface-card rounded-lg shadow-sm overflow-hidden">
           <div className="overflow-x-auto">

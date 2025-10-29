@@ -1,5 +1,4 @@
 // types.ts
-
 // Define os tipos de página para navegação
 export type Page = 'dashboard' | 'pos' | 'products' | 'sales' | 'customers' | 'settings' | 'deliveries' | 'suppliers' | 'accountsPayable' | 'reports' | 'returns' | 'purchases';
 

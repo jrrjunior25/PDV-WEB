@@ -1,4 +1,3 @@
-import React from 'react';
 import { AlertTriangleIcon } from '../icons/Icon';
 import Button from './Button';
 

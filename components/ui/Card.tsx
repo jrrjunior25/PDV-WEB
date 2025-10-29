@@ -1,9 +1,9 @@
-import React from 'react';
+import type { ElementType } from 'react';
 
 interface CardProps {
   title: string;
   value: string;
-  icon: React.ElementType;
+  icon: ElementType;
   isWarning?: boolean;
 }
 

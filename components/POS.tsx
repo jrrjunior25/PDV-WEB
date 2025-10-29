@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useReducer, useEffect, useRef, useCallback } from 'react';
+import { useState, useMemo, useReducer, useEffect, useRef, useCallback } from 'react';
 import { api } from '../services/api';
 import { useMockApi } from '../hooks/useMockApi';
 import { Product, SaleItem, Sale, SystemSettings, CashRegisterSession, Customer, StoreCredit } from '../types';

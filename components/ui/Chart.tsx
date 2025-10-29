@@ -1,4 +1,4 @@
-import React from 'react';
+
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { ChartData } from '../../types';
 

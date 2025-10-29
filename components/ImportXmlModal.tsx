@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { Product } from '../types';
 import Modal from './ui/Modal';
 import Button from './ui/Button';

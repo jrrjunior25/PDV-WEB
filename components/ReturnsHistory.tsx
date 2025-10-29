@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState, Fragment } from 'react';
 import { api } from '../services/api';
 import { useMockApi } from '../hooks/useMockApi';
 import { Return } from '../types';
@@ -29,7 +29,7 @@ const ReturnsHistory = () => {
         return <tr><td colSpan={7} className="text-center py-8 text-text-muted">Nenhuma devolução registrada.</td></tr>
     }
     return returns?.map(ret => (
-      <React.Fragment key={ret.id}>
+      <Fragment key={ret.id}>
         <tr className="bg-surface-card border-b hover:bg-surface-main/50 cursor-pointer" onClick={() => toggleReturnDetails(ret.id)}>
           <td className="px-6 py-4 font-mono text-xs font-medium text-text-primary">{ret.id}</td>
           <td className="px-6 py-4 font-mono text-xs">{ret.saleId}</td>
@@ -69,7 +69,7 @@ const ReturnsHistory = () => {
             </td>
           </tr>
         )}
-      </React.Fragment>
+      </Fragment>
     ));
   };
 

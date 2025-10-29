@@ -1,11 +1,11 @@
-import React from 'react';
+import type { ReactNode } from 'react';
 import { XIcon } from '../icons/Icon';
 
 interface ModalProps {
   isOpen: boolean;
   onClose: () => void;
   title: string;
-  children: React.ReactNode;
+  children: ReactNode;
 }
 
 const Modal = ({ isOpen, onClose, title, children }: ModalProps) => {

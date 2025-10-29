@@ -1,5 +1,3 @@
-import React from 'react';
-
 interface QRCodeProps {
   value: string;
   size?: number;

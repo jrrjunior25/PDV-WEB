@@ -1,7 +1,6 @@
-import { useState, useMemo, useReducer, useEffect, useRef, useCallback } from 'react';
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { api } from '../services/api';
-import { useMockApi } from '../hooks/useMockApi';
-import { Product, SaleItem, Sale, SystemSettings, CashRegisterSession, Customer, StoreCredit } from '../types';
+import { SaleItem, Sale, CashRegisterSession, Customer, StoreCredit, Product } from '../types';
 import { useAuth } from '../auth/AuthContext';
 import { generatePixBrCode } from '../services/pixService';
 import Input from './ui/Input';
@@ -10,55 +9,9 @@ import Modal from './ui/Modal';
 import QRCode from './ui/QRCode';
 import ErrorDisplay from './ui/ErrorDisplay';
 import { Trash2Icon, SearchIcon, PrinterIcon, CalculatorIcon, UserSearchIcon, TruckIcon, TicketIcon } from './icons/Icon';
-
-type CartAction =
-  | { type: 'ADD_ITEM'; payload: { product: Product, quantity: number } }
-  | { type: 'REMOVE_ITEM'; payload: { productId: string } }
-  | { type: 'UPDATE_QUANTITY'; payload: { productId: string; quantity: number } }
-  | { type: 'CLEAR_CART' };
-
-const cartReducer = (state: SaleItem[], action: CartAction): SaleItem[] => {
-  switch (action.type) {
-    case 'ADD_ITEM':
-      const { product, quantity } = action.payload;
-      const existingItem = state.find(item => item.productId === product.id);
-      if (existingItem) {
-        const newQuantity = existingItem.quantity + quantity;
-        return state.map(item =>
-          item.productId === product.id
-            ? { ...item, quantity: newQuantity, totalPrice: newQuantity * item.unitPrice }
-            : item
-        );
-      }
-      return [
-        ...state,
-        {
-          productId: product.id,
-          productName: product.name,
-          quantity: quantity,
-          unitPrice: product.price,
-          totalPrice: product.price * quantity,
-          imageUrl: product.imageUrl,
-          returnableQuantity: 0, // This is temporary, will be set on sale completion
-        },
-      ];
-    case 'REMOVE_ITEM':
-      return state.filter(item => item.productId !== action.payload.productId);
-    case 'UPDATE_QUANTITY':
-        if (action.payload.quantity <= 0) {
-            return state.filter(item => item.productId !== action.payload.productId);
-        }
-        return state.map(item =>
-            item.productId === action.payload.productId
-            ? { ...item, quantity: action.payload.quantity, totalPrice: action.payload.quantity * item.unitPrice }
-            : item
-        );
-    case 'CLEAR_CART':
-      return [];
-    default:
-      return state;
-  }
-};
+import { useData } from '../contexts/DataContext';
+import { useNotifications } from '../contexts/NotificationContext';
+import { useCart } from '../hooks/useCart';
 
 // FIX: Helper function to robustly extract the city from an address string.
 // It now filters empty parts and checks multiple positions to handle various formats.
@@ -95,15 +48,15 @@ const getCityFromAddress = (address: string | undefined): string => {
 
 const POS = () => {
   const { user } = useAuth();
-  const { data: products, error: productsError, refetch: refetchProducts } = useMockApi<Product[]>(api.getProducts);
-  const { data: settings } = useMockApi<SystemSettings>(api.getSettings);
-  const { data: storeCredits, refetch: refetchCredits } = useMockApi<StoreCredit[]>(api.getStoreCredits);
+  const { addNotification } = useNotifications();
+  const { data, loading: loadingData, error: dataError, refetchAll } = useData();
+  const { products, settings, storeCredits } = data;
+  const { cart, dispatch } = useCart();
   
   const [cashSession, setCashSession] = useState<CashRegisterSession | null | undefined>(undefined);
   const [sessionError, setSessionError] = useState<string | null>(null);
   
   const [searchTerm, setSearchTerm] = useState('');
-  const [cart, dispatch] = useReducer(cartReducer, []);
   const [lastAddedItem, setLastAddedItem] = useState<SaleItem | null>(null);
   const [activeCustomer, setActiveCustomer] = useState<Customer | null>(null);
   const [customerCredits, setCustomerCredits] = useState<StoreCredit[]>([]);
@@ -212,7 +165,7 @@ const POS = () => {
         setSearchTerm('');
         searchInputRef.current?.focus();
     } else {
-        alert(`Produto "${product.name}" sem estoque.`);
+        addNotification(`Produto "${product.name}" sem estoque.`, 'error');
     }
   };
 
@@ -229,7 +182,7 @@ const POS = () => {
     if (product) {
       handleAddProduct(product);
     } else {
-      alert('Produto não encontrado.');
+      addNotification('Produto não encontrado.', 'error');
     }
   };
 
@@ -240,8 +193,7 @@ const POS = () => {
     setIdentifyCustomerModalOpen(true);
     setActiveCustomer(null);
     setAppliedCredit(0);
-    refetchProducts();
-    refetchCredits();
+    refetchAll(); // Refetch all data for the new sale
   };
 
   const handleFinalizeSale = async () => {
@@ -270,7 +222,7 @@ const POS = () => {
 
     } catch (error: any) {
         console.error("Erro ao processar venda:", error);
-        alert(`Falha ao processar a venda: ${error.message}`);
+        addNotification(`Falha ao processar a venda: ${error.message}`, 'error');
     } finally { setIsProcessing(false); setPaymentModalOpen(false); }
   };
   
@@ -280,8 +232,9 @@ const POS = () => {
     try {
       await api.openCashRegister(openingBalance, user.id, user.name);
       await fetchCashSession();
+      addNotification('Caixa aberto com sucesso!', 'success');
       setIsCashManagerOpen(false);
-    } catch (error: any) { alert(`Erro ao abrir caixa: ${error.message}`);
+    } catch (error: any) { addNotification(`Erro ao abrir caixa: ${error.message}`, 'error');
     } finally { setIsProcessing(false); }
   };
 
@@ -292,8 +245,8 @@ const POS = () => {
       await api.recordSangria(cashSession.id, sangriaAmount, user?.name || 'N/A');
       await fetchCashSession();
       setSangriaAmount(0);
-      alert("Sangria registrada com sucesso!");
-    } catch (error: any) { alert(`Erro ao registrar sangria: ${error.message}`);
+      addNotification("Sangria registrada com sucesso!", 'success');
+    } catch (error: any) { addNotification(`Erro ao registrar sangria: ${error.message}`, 'error');
     } finally { setIsProcessing(false); }
   };
 
@@ -306,7 +259,8 @@ const POS = () => {
       setIsCashManagerOpen(false);
       setClosingAmount(undefined);
       setClosingNotes('');
-    } catch (error: any) { alert(`Erro ao fechar caixa: ${error.message}`);
+      addNotification('Caixa fechado com sucesso!', 'success');
+    } catch (error: any) { addNotification(`Erro ao fechar caixa: ${error.message}`, 'error');
     } finally { setIsProcessing(false); }
   };
   
@@ -325,11 +279,11 @@ const POS = () => {
     setIsProcessing(true);
     try {
         const newDelivery = await api.createDeliveryForSale(saleCompleted.id, activeCustomer.name, activeCustomer.address);
-        alert("Entrega registrada com sucesso!");
+        addNotification("Entrega registrada com sucesso!", 'success');
         setSaleCompleted(prevSale => prevSale ? { ...prevSale, deliveryId: newDelivery.id } : null);
     } catch (error: any) {
         console.error("Erro ao criar entrega:", error);
-        alert(`Falha ao registrar entrega: ${error.message}`);
+        addNotification(`Falha ao registrar entrega: ${error.message}`, 'error');
     } finally {
         setIsProcessing(false);
     }
@@ -508,12 +462,16 @@ const PaymentModal = () => {
     )
 }
 
-  if (productsError) {
+  if (loadingData) {
+    return <div className="flex justify-center items-center h-full"><div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-brand-primary"></div></div>;
+  }
+
+  if (dataError) {
     return (
         <div className="flex items-center justify-center h-full p-4">
             <ErrorDisplay 
-                message={`Não foi possível carregar os produtos necessários para o PDV. ${productsError.message}`}
-                onRetry={refetchProducts}
+                message={`Não foi possível carregar os dados necessários para o PDV. ${dataError}`}
+                onRetry={refetchAll}
             />
         </div>
     );

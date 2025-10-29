@@ -1,6 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { api } from '../services/api';
-import { useMockApi } from '../hooks/useMockApi';
 import { Product, ProductCategory } from '../types';
 import Button from './ui/Button';
 import Modal from './ui/Modal';
@@ -9,11 +8,15 @@ import ErrorDisplay from './ui/ErrorDisplay';
 import { generateProductDescription } from '../services/geminiService';
 import { useAuth } from '../auth/AuthContext';
 import { PlusIcon, EditIcon, SparklesIcon, MinusCircleIcon, PlusCircleIcon } from './icons/Icon';
+import { useData } from '../contexts/DataContext';
+import { useNotifications } from '../contexts/NotificationContext';
+import SkeletonLoader from './ui/SkeletonLoader';
 
 const Products = () => {
-  const { data: products, loading: loadingProducts, error: productsError, refetch: refetchProducts } = useMockApi<Product[]>(api.getProducts);
-  const { data: categories, loading: loadingCategories, error: categoriesError, refetch: refetchCategories } = useMockApi<ProductCategory[]>(api.getProductCategories);
-  
+  const { data, loading, error, refetchAll } = useData();
+  const { products, categories } = data;
+  const { addNotification } = useNotifications();
+
   const [isModalOpen, setModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Partial<Product> | null>(null);
   const [isGeneratingDesc, setIsGeneratingDesc] = useState(false);
@@ -24,13 +27,6 @@ const Products = () => {
 
   const { user } = useAuth();
   const isAdmin = user?.role === 'administrador';
-
-  const loading = loadingProducts || loadingCategories;
-  const error = productsError || categoriesError;
-  const refetchAll = () => {
-      refetchProducts();
-      refetchCategories();
-  };
 
   // --- Product Modal Logic ---
   const openProductModal = (product: Partial<Product> | null = null) => {
@@ -60,7 +56,7 @@ const Products = () => {
   
   const handleGenerateDescription = async () => {
     if (!editingProduct || !editingProduct.name || !editingProduct.categoryId) {
-        alert("Por favor, preencha o nome e a categoria do produto para gerar uma descrição.");
+        addNotification("Preencha o nome e a categoria para gerar uma descrição.", 'warning');
         return;
     }
     const categoryName = categories?.find(c => c.id === editingProduct.categoryId)?.name || '';
@@ -77,10 +73,11 @@ const Products = () => {
     if (!editingProduct) return;
     try {
         await api.saveProduct(editingProduct as Product);
-        refetchProducts();
+        addNotification('Produto salvo com sucesso!', 'success');
+        refetchAll();
         closeProductModal();
     } catch (e: any) {
-        alert(`Erro ao salvar produto: ${e.message}`);
+        addNotification(`Erro ao salvar produto: ${e.message}`, 'error');
     }
   };
   
@@ -89,10 +86,10 @@ const Products = () => {
     setIsUpdatingStock(productId);
     try {
       await api.updateProductStock(productId, newStock);
-      refetchProducts();
-    } catch (error) {
-      console.error("Failed to update stock", error);
-      alert("Erro ao atualizar o estoque.");
+      refetchAll(); // Refetch to ensure data consistency across app
+    } catch (err: any) {
+      console.error("Failed to update stock", err);
+      addNotification(`Erro ao atualizar o estoque: ${err.message}`, 'error');
     } finally {
       setIsUpdatingStock(null);
     }
@@ -113,10 +110,11 @@ const Products = () => {
     if (!editingCategory?.name) return;
     try {
         await api.saveProductCategory(editingCategory as ProductCategory);
-        refetchCategories();
+        addNotification('Categoria salva com sucesso!', 'success');
+        refetchAll();
         closeCategoryModal();
     } catch (e: any) {
-        alert(`Erro ao salvar categoria: ${e.message}`);
+        addNotification(`Erro ao salvar categoria: ${e.message}`, 'error');
     }
   };
 
@@ -125,8 +123,18 @@ const Products = () => {
   };
   
   const tableContent = () => {
-    if (loading) return <tr><td colSpan={isAdmin ? 5 : 4} className="text-center py-8">Carregando produtos...</td></tr>;
-    if (error) return <tr><td colSpan={isAdmin ? 5 : 4} className="p-4"><ErrorDisplay message={`Não foi possível carregar os produtos. ${error.message}`} onRetry={refetchAll} /></td></tr>;
+    if (loading) {
+        return Array.from({ length: 5 }).map((_, index) => (
+            <tr key={index} className="bg-surface-card border-b">
+                <td className="px-6 py-4"><SkeletonLoader className="h-5 w-3/4" /></td>
+                <td className="px-6 py-4"><SkeletonLoader className="h-5 w-1/2" /></td>
+                <td className="px-6 py-4"><SkeletonLoader className="h-5 w-1/4" /></td>
+                <td className="px-6 py-4"><SkeletonLoader className="h-5 w-20" /></td>
+                {isAdmin && <td className="px-6 py-4 text-right"><SkeletonLoader className="h-8 w-8" /></td>}
+            </tr>
+        ));
+    }
+    if (error) return <tr><td colSpan={isAdmin ? 5 : 4} className="p-4"><ErrorDisplay message={`Não foi possível carregar os produtos. ${error}`} onRetry={refetchAll} /></td></tr>;
     return products?.map(product => (
         <tr key={product.id} className="bg-surface-card border-b hover:bg-surface-main/50">
             <td className="px-6 py-4 font-medium text-text-primary whitespace-nowrap">{product.name}</td>

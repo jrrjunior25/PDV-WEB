@@ -1,5 +1,8 @@
 import Layout from '../components/Layout';
 import Login from '../components/Login';
+import Notifications from '../components/ui/Notifications';
+import { DataProvider } from '../contexts/DataContext';
+import { NotificationProvider } from '../contexts/NotificationContext';
 import { AuthProvider, useAuth } from './AuthContext';
 
 // O componente principal que gerencia a navegação e o estado de autenticação.
@@ -17,7 +20,12 @@ function AppContent() {
 function App() {
   return (
     <AuthProvider>
-      <AppContent />
+      <NotificationProvider>
+        <DataProvider>
+          <AppContent />
+          <Notifications />
+        </DataProvider>
+      </NotificationProvider>
     </AuthProvider>
   );
 };

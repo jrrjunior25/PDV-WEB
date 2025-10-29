@@ -1,29 +1,14 @@
 import { useMemo } from 'react';
-import { api } from '../services/api';
-import { useMockApi } from '../hooks/useMockApi';
-import { Product, Sale, Customer, ChartData, Delivery, AccountPayable } from '../types';
 import Card from './ui/Card';
 import Chart from './ui/Chart';
 import ErrorDisplay from './ui/ErrorDisplay';
-import { DollarSignIcon, UsersIcon, PackageWarningIcon, ShoppingBagIcon, TruckIcon, ClipboardCheckIcon } from './icons/Icon';
+import { DollarSignIcon, ShoppingBagIcon, TruckIcon, ClipboardCheckIcon, PackageWarningIcon } from './icons/Icon';
+import { useData } from '../contexts/DataContext';
+import SkeletonLoader from './ui/SkeletonLoader';
 
 const Dashboard = () => {
-  const { data: sales, loading: loadingSales, error: salesError, refetch: refetchSales } = useMockApi<Sale[]>(api.getSales);
-  const { data: products, loading: loadingProducts, error: productsError, refetch: refetchProducts } = useMockApi<Product[]>(api.getProducts);
-  const { data: customers, loading: loadingCustomers, error: customersError, refetch: refetchCustomers } = useMockApi<Customer[]>(api.getCustomers);
-  const { data: deliveries, loading: loadingDeliveries, error: deliveriesError, refetch: refetchDeliveries } = useMockApi<Delivery[]>(api.getDeliveries);
-  const { data: accountsPayable, loading: loadingAccounts, error: accountsError, refetch: refetchAccounts } = useMockApi<AccountPayable[]>(api.getAccountsPayable);
-
-  const loading = loadingSales || loadingProducts || loadingCustomers || loadingDeliveries || loadingAccounts;
-  const error = salesError || productsError || customersError || deliveriesError || accountsError;
-
-  const refetchAll = () => {
-    refetchSales();
-    refetchProducts();
-    refetchCustomers();
-    refetchDeliveries();
-    refetchAccounts();
-  };
+  const { data, loading, error, refetchAll } = useData();
+  const { sales, products, customers, deliveries, accountsPayable } = data;
 
   const stats = useMemo(() => {
     if (!sales || !products || !customers || !deliveries || !accountsPayable) return null;
@@ -42,7 +27,7 @@ const Dashboard = () => {
     };
   }, [sales, products, customers, deliveries, accountsPayable]);
   
-  const salesChartData: ChartData[] = useMemo(() => {
+  const salesChartData = useMemo(() => {
     if (!sales) return [];
     const dailySales: { [key: string]: number } = {};
     sales.forEach(sale => {
@@ -52,17 +37,29 @@ const Dashboard = () => {
     return Object.entries(dailySales).map(([name, value]) => ({ name, value })).reverse().slice(0, 7);
   }, [sales]);
 
-
   if (loading) {
-    return <div className="flex justify-center items-center h-full"><div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-brand-primary"></div></div>;
+    return (
+        <div className="space-y-6">
+            <SkeletonLoader className="h-10 w-1/3" />
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
+                <SkeletonLoader className="h-28" />
+                <SkeletonLoader className="h-28" />
+                <SkeletonLoader className="h-28" />
+                <SkeletonLoader className="h-28" />
+                <SkeletonLoader className="h-28" />
+            </div>
+             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <SkeletonLoader className="h-80 lg:col-span-2" />
+                <SkeletonLoader className="h-80" />
+            </div>
+        </div>
+    );
   }
 
   if (error) {
-    return <div className="flex justify-center items-center h-full p-4"><ErrorDisplay message={`Não foi possível carregar os dados do dashboard. ${error.message}`} onRetry={refetchAll} /></div>;
+    return <div className="flex justify-center items-center h-full p-4"><ErrorDisplay message={`Não foi possível carregar os dados do dashboard. ${error}`} onRetry={refetchAll} /></div>;
   }
-
-  // FIX: Safely create the low stock product list to prevent a crash on initial render
-  // when 'products' data is not yet available.
+  
   const lowStockProductList = products?.filter(p => p.stock <= p.lowStockThreshold) ?? [];
 
   return (

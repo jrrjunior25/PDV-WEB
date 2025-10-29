@@ -227,6 +227,19 @@ const createMockApi = () => {
       await simulateDelay(300);
       return mockCustomers.find(c => c.cpfCnpj === cpf) || null;
     },
+    saveCustomer: async (customer: Omit<Customer, 'id'> & { id?: string }): Promise<Customer> => {
+      await simulateDelay(500);
+      if (customer.id) {
+          const index = mockCustomers.findIndex(c => c.id === customer.id);
+          if (index !== -1) {
+              mockCustomers[index] = { ...mockCustomers[index], ...customer } as Customer;
+              return mockCustomers[index];
+          }
+      }
+      const newCustomer = { ...customer, id: `c${Date.now()}` } as Customer;
+      mockCustomers.push(newCustomer);
+      return newCustomer;
+    },
 
     // Settings
     getSettings: async (): Promise<SystemSettings> => { await simulateDelay(300); return { ...mockSettings }; },

@@ -1,17 +1,21 @@
 import { useState, useMemo } from 'react';
 import { api } from '../../backend/api';
-import { useMockApi } from '../hooks/useMockApi';
 import { Customer, Sale, StoreCredit } from '../../shared/types';
 import Button from './ui/Button';
-import { PlusIcon, TicketIcon } from './icons/Icon';
+import { PlusIcon, TicketIcon, EditIcon } from './icons/Icon';
 import Modal from './ui/Modal';
 import ErrorDisplay from './ui/ErrorDisplay';
 import { useAuth } from '../auth/AuthContext';
+import { useData } from '../contexts/DataContext';
+import { useNotifications } from '../contexts/NotificationContext';
+import Input from './ui/Input';
+import SkeletonLoader from './ui/SkeletonLoader';
 
+// The Detail Modal remains the same
 interface CustomerDetailModalProps {
   customer: Customer;
-  sales: Sale[];
-  storeCredits: StoreCredit[];
+  sales: Sale[] | null; // Can be null during loading
+  storeCredits: StoreCredit[] | null; // Can be null during loading
   isOpen: boolean;
   onClose: () => void;
 }
@@ -67,35 +71,82 @@ const CustomerDetailModal = ({ customer, sales, storeCredits, isOpen, onClose }:
     );
 };
 
+
 const Customers = () => {
   const { user } = useAuth();
-  const { data: customers, loading: loadingCustomers, error: customersError, refetch: refetchCustomers } = useMockApi<Customer[]>(api.getCustomers);
-  const { data: sales, loading: loadingSales, error: salesError, refetch: refetchSales } = useMockApi<Sale[]>(api.getSales);
-  const { data: storeCredits, loading: loadingCredits, error: creditsError, refetch: refetchCredits } = useMockApi<StoreCredit[]>(api.getStoreCredits);
+  const { addNotification } = useNotifications();
+  const { data, loading, error, refetchAll } = useData();
+  const { customers, sales, storeCredits } = data;
   
-  const loading = loadingCustomers || loadingSales || loadingCredits;
-  const error = customersError || salesError || creditsError;
-  const refetchAll = () => {
-    refetchCustomers();
-    refetchSales();
-    refetchCredits();
-  };
+  const isAdmin = user?.role === 'administrador' || user?.role === 'vendedor';
 
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingCustomer, setEditingCustomer] = useState<Partial<Customer> | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+
+  const openModal = (customer: Partial<Customer> | null = null) => {
+    setEditingCustomer(customer ? { ...customer } : { name: '', cpfCnpj: '', email: '', phone: '', address: '' });
+    setIsModalOpen(true);
+  };
+
+  const closeModal = () => {
+    setIsModalOpen(false);
+    setEditingCustomer(null);
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!editingCustomer) return;
+    const { name, value } = e.target;
+    setEditingCustomer({ ...editingCustomer, [name]: value });
+  };
+
+  const handleSave = async () => {
+    if (!editingCustomer || !editingCustomer.name) {
+      addNotification('O nome do cliente é obrigatório.', 'warning');
+      return;
+    }
+    setIsSaving(true);
+    try {
+      await api.saveCustomer(editingCustomer as Customer);
+      addNotification('Cliente salvo com sucesso!', 'success');
+      refetchAll();
+      closeModal();
+    } catch (e: any) {
+      addNotification(`Erro ao salvar cliente: ${e.message}`, 'error');
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   const renderTableContent = () => {
     if (loading) {
-      return <tr><td colSpan={4} className="text-center py-8">Carregando clientes...</td></tr>;
+      return Array.from({ length: 4 }).map((_, index) => (
+        <tr key={index} className="bg-surface-card border-b">
+          <td className="px-6 py-4"><SkeletonLoader className="h-5 w-3/4" /></td>
+          <td className="px-6 py-4"><SkeletonLoader className="h-5 w-1/2" /></td>
+          <td className="px-6 py-4"><SkeletonLoader className="h-5 w-3/4" /></td>
+          <td className="px-6 py-4"><SkeletonLoader className="h-5 w-1/2" /></td>
+          {isAdmin && <td className="px-6 py-4 text-right"><SkeletonLoader className="h-8 w-8 rounded-md" /></td>}
+        </tr>
+      ));
     }
     if (error) {
-      return <tr><td colSpan={4} className="p-4"><ErrorDisplay message={`Não foi possível carregar os dados dos clientes. ${error.message}`} onRetry={refetchAll} /></td></tr>;
+      return <tr><td colSpan={isAdmin ? 5 : 4} className="p-4"><ErrorDisplay message={`Não foi possível carregar os dados dos clientes. ${error}`} onRetry={refetchAll} /></td></tr>;
     }
     return customers?.filter(c => c.name !== 'Consumidor Final').map(customer => (
-      <tr key={customer.id} className="bg-surface-card border-b hover:bg-surface-main/50 cursor-pointer" onClick={() => setSelectedCustomer(customer)}>
-          <td className="px-6 py-4 font-medium text-text-primary">{customer.name}</td>
-          <td className="px-6 py-4">{customer.cpfCnpj}</td>
-          <td className="px-6 py-4">{customer.email}</td>
-          <td className="px-6 py-4">{customer.phone}</td>
+      <tr key={customer.id} className="bg-surface-card border-b hover:bg-surface-main/50">
+          <td className="px-6 py-4 font-medium text-text-primary cursor-pointer" onClick={() => setSelectedCustomer(customer)}>{customer.name}</td>
+          <td className="px-6 py-4 cursor-pointer" onClick={() => setSelectedCustomer(customer)}>{customer.cpfCnpj}</td>
+          <td className="px-6 py-4 cursor-pointer" onClick={() => setSelectedCustomer(customer)}>{customer.email}</td>
+          <td className="px-6 py-4 cursor-pointer" onClick={() => setSelectedCustomer(customer)}>{customer.phone}</td>
+          {isAdmin && (
+            <td className="px-6 py-4 text-right">
+              <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); openModal(customer); }}>
+                <EditIcon className="h-4 w-4"/>
+              </Button>
+            </td>
+          )}
       </tr>
     ));
   }
@@ -105,8 +156,8 @@ const Customers = () => {
     <div className="space-y-6">
         <div className="flex justify-between items-center">
             <h1 className="text-3xl font-bold text-text-primary">Clientes</h1>
-            {user?.role !== 'caixa' && (
-              <Button onClick={() => alert('Funcionalidade de adicionar cliente a ser implementada.')}>
+            {isAdmin && (
+              <Button onClick={() => openModal()}>
                   <PlusIcon className="h-5 w-5 mr-2"/> Adicionar Cliente
               </Button>
             )}
@@ -121,6 +172,7 @@ const Customers = () => {
                             <th scope="col" className="px-6 py-3">CPF/CNPJ</th>
                             <th scope="col" className="px-6 py-3">Email</th>
                             <th scope="col" className="px-6 py-3">Telefone</th>
+                            {isAdmin && <th scope="col" className="px-6 py-3 text-right">Ações</th>}
                         </tr>
                     </thead>
                     <tbody>
@@ -130,7 +182,7 @@ const Customers = () => {
             </div>
         </div>
     </div>
-    {selectedCustomer && sales && storeCredits && (
+    {selectedCustomer && (
         <CustomerDetailModal 
             customer={selectedCustomer}
             sales={sales}
@@ -138,6 +190,21 @@ const Customers = () => {
             isOpen={!!selectedCustomer}
             onClose={() => setSelectedCustomer(null)}
         />
+    )}
+     {isAdmin && isModalOpen && (
+        <Modal isOpen={isModalOpen} onClose={closeModal} title={editingCustomer?.id ? 'Editar Cliente' : 'Adicionar Cliente'}>
+            <div className="space-y-4">
+                <Input name="name" label="Nome Completo" value={editingCustomer?.name || ''} onChange={handleInputChange} required autoFocus/>
+                <Input name="cpfCnpj" label="CPF/CNPJ" value={editingCustomer?.cpfCnpj || ''} onChange={handleInputChange} />
+                <Input name="email" label="Email" type="email" value={editingCustomer?.email || ''} onChange={handleInputChange} />
+                <Input name="phone" label="Telefone" value={editingCustomer?.phone || ''} onChange={handleInputChange} />
+                <Input name="address" label="Endereço" value={editingCustomer?.address || ''} onChange={handleInputChange} />
+                <div className="flex justify-end gap-3 mt-6">
+                    <Button variant="secondary" onClick={closeModal}>Cancelar</Button>
+                    <Button onClick={handleSave} isLoading={isSaving}>Salvar</Button>
+                </div>
+            </div>
+        </Modal>
     )}
     </>
   );

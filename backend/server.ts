@@ -1,28 +1,24 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import bodyParser from 'body-parser';
-import fetch from 'node-fetch';
+import { initDatabase } from './database.js';
 
 dotenv.config();
 
 const PORT = process.env.PORT || 4000;
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-if (!GEMINI_API_KEY) {
-  console.error('GEMINI_API_KEY não definida. Defina no .env');
-  process.exit(1);
-}
-
 const app = express();
-// Em dev, permita o origin do frontend. Em produção, restrinja para seu domínio.
+
 app.use(cors({ origin: true }));
-app.use(bodyParser.json());
+app.use(express.json());
 
 app.post('/api/genai', async (req, res) => {
   try {
     const { prompt, options } = req.body;
+    const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+    if (!GEMINI_API_KEY) {
+      return res.status(500).json({ error: 'GEMINI_API_KEY não definida.' });
+    }
 
-    // Exemplo de proxy via fetch — substitua a URL e payload conforme a API real do GenAI
     const apiResponse = await fetch('https://genai.googleapis.com/v1beta/generateText', {
       method: 'POST',
       headers: {
@@ -48,4 +44,5 @@ app.post('/api/genai', async (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`Backend rodando em http://localhost:${PORT}`);
+  initDatabase();
 });

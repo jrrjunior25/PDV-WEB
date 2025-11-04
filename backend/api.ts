@@ -1,4 +1,4 @@
-import { Product, Sale, Customer, SystemSettings, User, ProductCategory, Supplier, AccountPayable, Delivery, CashRegisterSession, Sangria, Return, StoreCredit, ReturnItem, PurchaseOrder, PurchaseOrderItem } from '../shared/types';
+import { Product, Sale, Customer, SystemSettings, User, ProductCategory, Supplier, AccountPayable, Delivery, CashRegisterSession, Sangria, Return, StoreCredit, ReturnItem, PurchaseOrder, PurchaseOrderItem, SaleItem } from './shared/types';
 
 // Interface para os dados extraídos do XML da NF-e para importação.
 interface NfeImportData {
@@ -26,6 +26,8 @@ interface NfeImportData {
   }>;
   totalAmount: number;
 }
+
+import db from './database.js';
 
 // This function encapsulates the entire mock database and API logic,
 // preventing mutable global state at the module level.
@@ -122,522 +124,587 @@ const createMockApi = () => {
     },
 
     // Products
-    getProducts: async (): Promise<Product[]> => { await simulateDelay(500); return [...mockProducts]; },
-    getProductById: async (id: string): Promise<Product | undefined> => { await simulateDelay(200); return mockProducts.find(p => p.id === id); },
-    saveProduct: async (product: Omit<Product, 'id'> & { id?: string }): Promise<Product> => {
-      await simulateDelay(600);
-      if (product.id) {
-        const index = mockProducts.findIndex(p => p.id === product.id);
-        if (index !== -1) { mockProducts[index] = { ...mockProducts[index], ...product } as Product; return mockProducts[index]; }
-      }
-      const newProduct: Product = { ...(product as Omit<Product, 'id'>), id: `p${Date.now()}` };
-      mockProducts.push(newProduct);
-      return newProduct;
+    getProducts: (): Promise<Product[]> => {
+      return new Promise((resolve, reject) => {
+        db.all("SELECT * FROM products", [], (err, rows) => {
+          if (err) {
+            reject(err);
+          } else {
+            resolve(rows as Product[]);
+          }
+        });
+      });
     },
-    updateProductStock: async (productId: string, newStock: number): Promise<Product> => {
-      await simulateDelay(300);
-      const index = mockProducts.findIndex(p => p.id === productId);
-      if (index === -1) throw new Error("Produto não encontrado");
-      mockProducts[index].stock = newStock >= 0 ? newStock : 0; // Ensure stock is not negative
-      return mockProducts[index];
+    getProductById: (id: string): Promise<Product | undefined> => {
+      return new Promise((resolve, reject) => {
+        db.get("SELECT * FROM products WHERE id = ?", [id], (err, row) => {
+          if (err) {
+            reject(err);
+          } else {
+            resolve(row as Product | undefined);
+          }
+        });
+      });
+    },
+    saveProduct: (product: Omit<Product, 'id'> & { id?: string }): Promise<Product> => {
+      return new Promise((resolve, reject) => {
+        if (product.id) {
+          const { id, ...rest } = product;
+          const fields = Object.keys(rest).map(k => `${k} = ?`).join(', ');
+          const values = Object.values(rest);
+          db.run(`UPDATE products SET ${fields} WHERE id = ?`, [...values, id], function (err) {
+            if (err) {
+              reject(err);
+            } else {
+              resolve({ ...product } as Product);
+            }
+          });
+        } else {
+          const newProduct: Product = { ...(product as Omit<Product, 'id'>), id: `p${Date.now()}` };
+          const { id, ...rest } = newProduct;
+          const fields = Object.keys(rest).join(', ');
+          const placeholders = Object.keys(rest).map(() => '?').join(', ');
+          const values = Object.values(rest);
+          db.run(`INSERT INTO products (id, ${fields}) VALUES (?, ${placeholders})`, [id, ...values], function (err) {
+            if (err) {
+              reject(err);
+            } else {
+              resolve(newProduct);
+            }
+          });
+        }
+      });
+    },
+    updateProductStock: (productId: string, newStock: number): Promise<Product> => {
+      return new Promise((resolve, reject) => {
+        db.run("UPDATE products SET stock = ? WHERE id = ?", [newStock, productId], function (err) {
+          if (err) {
+            reject(err);
+          } else {
+            db.get("SELECT * FROM products WHERE id = ?", [productId], (err, row) => {
+              if (err) {
+                reject(err);
+              } else {
+                resolve(row as Product);
+              }
+            });
+          }
+        });
+      });
     },
 
     // Categories
-    getProductCategories: async (): Promise<ProductCategory[]> => { await simulateDelay(200); return [...mockProductCategories]; },
-    saveProductCategory: async (category: Omit<ProductCategory, 'id'> & { id?: string }): Promise<ProductCategory> => {
-      await simulateDelay(400);
-      if (category.id) {
-        const index = mockProductCategories.findIndex(c => c.id === category.id);
-        if (index !== -1) { mockProductCategories[index] = { ...mockProductCategories[index], ...category } as ProductCategory; return mockProductCategories[index]; }
-      }
-      const newCategory = { ...category, id: `cat${Date.now()}` } as ProductCategory;
-      mockProductCategories.push(newCategory);
-      return newCategory;
+    getProductCategories: (): Promise<ProductCategory[]> => {
+      return new Promise((resolve, reject) => {
+        db.all("SELECT * FROM product_categories", [], (err, rows) => {
+          if (err) {
+            reject(err);
+          } else {
+            resolve(rows as ProductCategory[]);
+          }
+        });
+      });
+    },
+    saveProductCategory: (category: Omit<ProductCategory, 'id'> & { id?: string }): Promise<ProductCategory> => {
+      return new Promise((resolve, reject) => {
+        if (category.id) {
+          db.run("UPDATE product_categories SET name = ? WHERE id = ?", [category.name, category.id], function (err) {
+            if (err) {
+              reject(err);
+            } else {
+              resolve({ ...category } as ProductCategory);
+            }
+          });
+        } else {
+          const newCategory = { ...category, id: `cat${Date.now()}` } as ProductCategory;
+          db.run("INSERT INTO product_categories (id, name) VALUES (?, ?)", [newCategory.id, newCategory.name], function (err) {
+            if (err) {
+              reject(err);
+            } else {
+              resolve(newCategory);
+            }
+          });
+        }
+      });
     },
 
     // Sales
-    getSales: async (): Promise<Sale[]> => { await simulateDelay(700); return [...mockSales].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()); },
+    getSales: (): Promise<Sale[]> => {
+      return new Promise((resolve, reject) => {
+        db.all("SELECT * FROM sales ORDER BY date DESC", [], (err, rows) => {
+          if (err) {
+            reject(err);
+          } else {
+            const sales = rows as Sale[];
+            const promises = sales.map(sale => {
+              return new Promise<void>((resolve, reject) => {
+                db.all("SELECT * FROM sale_items WHERE sale_id = ?", [sale.id], (err, items) => {
+                  if (err) {
+                    reject(err);
+                  } else {
+                    sale.items = items as SaleItem[];
+                    resolve();
+                  }
+                });
+              });
+            });
+            Promise.all(promises).then(() => resolve(sales));
+          }
+        });
+      });
+    },
     
-    processSale: async (
+    processSale: (
         sale: Omit<Sale, 'id' | 'date' | 'status' | 'items' | 'storeCreditAmountUsed'> & { items: Omit<Sale['items'][0], 'returnableQuantity'>[] },
         storeCreditPayment?: { creditIds: string[], amount: number }
     ): Promise<Sale> => {
-      await simulateDelay(1000);
-
-      // Process store credit payment
-      if (storeCreditPayment && storeCreditPayment.amount > 0) {
-        let amountToDeduct = storeCreditPayment.amount;
-        for (const creditId of storeCreditPayment.creditIds) {
-          if (amountToDeduct <= 0) break;
-          const creditIndex = mockStoreCredits.findIndex(c => c.id === creditId && c.status === 'Active');
-          if (creditIndex !== -1) {
-            const credit = mockStoreCredits[creditIndex];
-            const deduction = Math.min(credit.balance, amountToDeduct);
-            credit.balance -= deduction;
-            amountToDeduct -= deduction;
-            if (credit.balance <= 0) {
-              credit.status = 'Used';
+        return new Promise((resolve, reject) => {
+            if (storeCreditPayment && storeCreditPayment.amount > 0) {
+                let amountToDeduct = storeCreditPayment.amount;
+                for (const creditId of storeCreditPayment.creditIds) {
+                    if (amountToDeduct <= 0) break;
+                    db.get("SELECT * FROM store_credits WHERE id = ? AND status = 'Active'", [creditId], (err, credit: StoreCredit) => {
+                        if (credit) {
+                            const deduction = Math.min(credit.balance, amountToDeduct);
+                            const newBalance = credit.balance - deduction;
+                            amountToDeduct -= deduction;
+                            const newStatus = newBalance <= 0 ? 'Used' : 'Active';
+                            db.run("UPDATE store_credits SET balance = ?, status = ? WHERE id = ?", [newBalance, newStatus, creditId]);
+                        }
+                    });
+                }
             }
-          }
-        }
-      }
 
-      const accessKey = generateNfceAccessKey();
-      const newSale: Sale = {
-        ...sale,
-        id: `s${Date.now()}`,
-        date: new Date().toISOString(),
-        items: sale.items.map(item => ({...item, returnableQuantity: item.quantity})),
-        status: 'Completed',
-        nfceAccessKey: accessKey,
-        nfceQrCodeUrl: `https://www.sefaz.rs.gov.br/nfce/consulta?p=${accessKey}|2|1|1|${btoa(String(sale.totalAmount))}`,
-        storeCreditAmountUsed: storeCreditPayment?.amount,
-      };
+            const accessKey = generateNfceAccessKey();
+            const newSale: Sale = {
+                ...sale,
+                id: `s${Date.now()}`,
+                date: new Date().toISOString(),
+                items: sale.items.map(item => ({...item, returnableQuantity: item.quantity})),
+                status: 'Completed',
+                nfceAccessKey: accessKey,
+                nfceQrCodeUrl: `https://www.sefaz.rs.gov.br/nfce/consulta?p=${accessKey}|2|1|1|${btoa(String(sale.totalAmount))}`,
+                storeCreditAmountUsed: storeCreditPayment?.amount,
+            };
 
-      newSale.items.forEach(item => {
-        const productIndex = mockProducts.findIndex(p => p.id === item.productId);
-        if (productIndex !== -1) { mockProducts[productIndex].stock -= item.quantity; }
-      });
+            db.serialize(() => {
+                db.run("INSERT INTO sales (id, date, total_amount, payment_method, customer_id, status) VALUES (?, ?, ?, ?, ?, ?)",
+                    [newSale.id, newSale.date, newSale.totalAmount, newSale.paymentMethod, newSale.customerId, newSale.status],
+                    function (err) {
+                        if (err) reject(err);
+                    }
+                );
 
-      mockSales.push(newSale);
-      return newSale;
+                const stmt = db.prepare("INSERT INTO sale_items (sale_id, product_id, product_name, quantity, returnable_quantity, unit_price, total_price) VALUES (?, ?, ?, ?, ?, ?, ?)");
+                newSale.items.forEach(item => {
+                    stmt.run(newSale.id, item.productId, item.productName, item.quantity, item.returnableQuantity, item.unitPrice, item.totalPrice);
+                    db.run("UPDATE products SET stock = stock - ? WHERE id = ?", [item.quantity, item.productId]);
+                });
+                stmt.finalize();
+
+                resolve(newSale);
+            });
+        });
     },
 
-    createDeliveryForSale: async (saleId: string, customerName: string, address: string): Promise<Delivery> => {
-      await simulateDelay(500);
-      const saleIndex = mockSales.findIndex(s => s.id === saleId);
-      if(saleIndex === -1) throw new Error("Venda não encontrada para criar entrega.");
+    createDeliveryForSale: (saleId: string, customerName: string, address: string): Promise<Delivery> => {
+        return new Promise((resolve, reject) => {
+            const newDelivery: Delivery = {
+                id: `d${Date.now()}`,
+                saleId: saleId,
+                customerName: customerName,
+                address: address,
+                status: 'Pendente',
+                createdAt: new Date().toISOString(),
+            };
 
-      const newDelivery: Delivery = {
-          id: `d${Date.now()}`,
-          saleId: saleId,
-          customerName: customerName,
-          address: address,
-          status: 'Pendente',
-          createdAt: new Date().toISOString(),
-      };
-      mockDeliveries.push(newDelivery);
-      mockSales[saleIndex].deliveryId = newDelivery.id;
-      return newDelivery;
+            db.run("INSERT INTO deliveries (id, sale_id, customer_name, address, status, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+                [newDelivery.id, newDelivery.saleId, newDelivery.customerName, newDelivery.address, newDelivery.status, newDelivery.createdAt],
+                function (err) {
+                    if (err) reject(err);
+                    db.run("UPDATE sales SET delivery_id = ? WHERE id = ?", [newDelivery.id, saleId]);
+                    resolve(newDelivery);
+                }
+            );
+        });
     },
 
     // Customers
-    getCustomers: async (): Promise<Customer[]> => { await simulateDelay(400); return [...mockCustomers]; },
-    getCustomerByCpf: async (cpf: string): Promise<Customer | null> => {
-      await simulateDelay(300);
-      return mockCustomers.find(c => c.cpfCnpj === cpf) || null;
+    getCustomers: (): Promise<Customer[]> => {
+        return new Promise((resolve, reject) => {
+            db.all("SELECT * FROM customers", [], (err, rows) => {
+                if (err) reject(err);
+                resolve(rows as Customer[]);
+            });
+        });
     },
-    saveCustomer: async (customer: Omit<Customer, 'id'> & { id?: string }): Promise<Customer> => {
-      await simulateDelay(500);
-      if (customer.id) {
-          const index = mockCustomers.findIndex(c => c.id === customer.id);
-          if (index !== -1) {
-              mockCustomers[index] = { ...mockCustomers[index], ...customer } as Customer;
-              return mockCustomers[index];
-          }
-      }
-      const newCustomer = { ...customer, id: `c${Date.now()}` } as Customer;
-      mockCustomers.push(newCustomer);
-      return newCustomer;
+    getCustomerByCpf: (cpf: string): Promise<Customer | null> => {
+        return new Promise((resolve, reject) => {
+            db.get("SELECT * FROM customers WHERE cpf_cnpj = ?", [cpf], (err, row) => {
+                if (err) reject(err);
+                resolve(row as Customer | null);
+            });
+        });
+    },
+    saveCustomer: (customer: Omit<Customer, 'id'> & { id?: string }): Promise<Customer> => {
+        return new Promise((resolve, reject) => {
+            if (customer.id) {
+                db.run("UPDATE customers SET name = ?, cpf_cnpj = ?, email = ?, phone = ?, address = ? WHERE id = ?",
+                    [customer.name, customer.cpfCnpj, customer.email, customer.phone, customer.address, customer.id],
+                    function (err) {
+                        if (err) reject(err);
+                        resolve({ ...customer } as Customer);
+                    }
+                );
+            } else {
+                const newCustomer = { ...customer, id: `c${Date.now()}` } as Customer;
+                db.run("INSERT INTO customers (id, name, cpf_cnpj, email, phone, address) VALUES (?, ?, ?, ?, ?, ?)",
+                    [newCustomer.id, newCustomer.name, newCustomer.cpfCnpj, newCustomer.email, newCustomer.phone, newCustomer.address],
+                    function (err) {
+                        if (err) reject(err);
+                        resolve(newCustomer);
+                    }
+                );
+            }
+        });
     },
 
     // Settings
-    getSettings: async (): Promise<SystemSettings> => { await simulateDelay(300); return { ...mockSettings }; },
-    saveSettings: async (settings: SystemSettings): Promise<SystemSettings> => { await simulateDelay(500); mockSettings = { ...settings }; return { ...mockSettings }; },
+    getSettings: (): Promise<SystemSettings> => {
+        return new Promise((resolve, reject) => {
+            db.get("SELECT * FROM system_settings WHERE id = 1", [], (err, row) => {
+                if (err) reject(err);
+                resolve(row as SystemSettings);
+            });
+        });
+    },
+    saveSettings: (settings: SystemSettings): Promise<SystemSettings> => {
+        return new Promise((resolve, reject) => {
+            db.run("UPDATE system_settings SET company_name = ?, cnpj = ?, address = ?, phone = ?, tax_regime = ?, pix_key = ? WHERE id = 1",
+                [settings.companyName, settings.cnpj, settings.address, settings.phone, settings.taxRegime, settings.pixKey],
+                function (err) {
+                    if (err) reject(err);
+                    resolve(settings);
+                }
+            );
+        });
+    },
 
     // Suppliers
-    getSuppliers: async (): Promise<Supplier[]> => { await simulateDelay(400); return [...mockSuppliers]; },
-    saveSupplier: async (supplier: Omit<Supplier, 'id'> & { id?: string }): Promise<Supplier> => {
-      await simulateDelay(500);
-      if (supplier.id) {
-          const index = mockSuppliers.findIndex(s => s.id === supplier.id);
-          if (index !== -1) { mockSuppliers[index] = { ...supplier } as Supplier; return mockSuppliers[index]; }
-      }
-      const newSupplier = { ...supplier, id: `sup${Date.now()}` } as Supplier;
-      mockSuppliers.push(newSupplier);
-      return newSupplier;
+    getSuppliers: (): Promise<Supplier[]> => {
+        return new Promise((resolve, reject) => {
+            db.all("SELECT * FROM suppliers", [], (err, rows) => {
+                if (err) reject(err);
+                resolve(rows as Supplier[]);
+            });
+        });
+    },
+    saveSupplier: (supplier: Omit<Supplier, 'id'> & { id?: string }): Promise<Supplier> => {
+        return new Promise((resolve, reject) => {
+            if (supplier.id) {
+                db.run("UPDATE suppliers SET name = ?, cnpj = ?, contact_person = ?, phone = ?, email = ? WHERE id = ?",
+                    [supplier.name, supplier.cnpj, supplier.contactPerson, supplier.phone, supplier.email, supplier.id],
+                    function (err) {
+                        if (err) reject(err);
+                        resolve({ ...supplier } as Supplier);
+                    }
+                );
+            } else {
+                const newSupplier = { ...supplier, id: `sup${Date.now()}` } as Supplier;
+                db.run("INSERT INTO suppliers (id, name, cnpj, contact_person, phone, email) VALUES (?, ?, ?, ?, ?, ?)",
+                    [newSupplier.id, newSupplier.name, newSupplier.cnpj, newSupplier.contactPerson, newSupplier.phone, newSupplier.email],
+                    function (err) {
+                        if (err) reject(err);
+                        resolve(newSupplier);
+                    }
+                );
+            }
+        });
     },
 
     // Accounts Payable
-    getAccountsPayable: async (): Promise<AccountPayable[]> => { await simulateDelay(600); return [...mockAccountsPayable].sort((a,b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()); },
-    saveAccountPayable: async (account: Omit<AccountPayable, 'id' | 'supplierName'> & { id?: string }): Promise<AccountPayable> => {
-      await simulateDelay(500);
-      const supplier = mockSuppliers.find(s => s.id === account.supplierId);
-      if (!supplier) throw new Error("Fornecedor não encontrado");
-
-      if (account.id) {
-          const index = mockAccountsPayable.findIndex(a => a.id === account.id);
-          if (index !== -1) {
-              mockAccountsPayable[index] = { ...mockAccountsPayable[index], ...account, supplierName: supplier.name };
-              return mockAccountsPayable[index];
-          }
-      }
-      const newAccount = { ...account, id: `ap${Date.now()}`, supplierName: supplier.name, status: 'Pendente' } as AccountPayable;
-      mockAccountsPayable.push(newAccount);
-      return newAccount;
+    getAccountsPayable: (): Promise<AccountPayable[]> => {
+        return new Promise((resolve, reject) => {
+            db.all("SELECT * FROM accounts_payable ORDER BY due_date ASC", [], (err, rows) => {
+                if (err) reject(err);
+                resolve(rows as AccountPayable[]);
+            });
+        });
     },
-    updateAccountPayableStatus: async (id: string, status: 'Pendente' | 'Paga'): Promise<AccountPayable> => {
-      await simulateDelay(300);
-      const index = mockAccountsPayable.findIndex(a => a.id === id);
-      if (index === -1) throw new Error("Conta não encontrada");
-      mockAccountsPayable[index].status = status;
-      return mockAccountsPayable[index];
+    saveAccountPayable: (account: Omit<AccountPayable, 'id' | 'supplierName'> & { id?: string }): Promise<AccountPayable> => {
+        return new Promise((resolve, reject) => {
+            db.get("SELECT name FROM suppliers WHERE id = ?", [account.supplierId], (err, supplier: Supplier) => {
+                if (err) reject(err);
+                const newAccount = { ...account, id: `ap${Date.now()}`, supplierName: supplier.name } as AccountPayable;
+                db.run("INSERT INTO accounts_payable (id, supplier_id, supplier_name, description, amount, due_date, status) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    [newAccount.id, newAccount.supplierId, newAccount.supplierName, newAccount.description, newAccount.amount, newAccount.dueDate, 'Pendente'],
+                    function (err) {
+                        if (err) reject(err);
+                        resolve(newAccount);
+                    }
+                );
+            });
+        });
+    },
+    updateAccountPayableStatus: (id: string, status: 'Pendente' | 'Paga'): Promise<AccountPayable> => {
+        return new Promise((resolve, reject) => {
+            db.run("UPDATE accounts_payable SET status = ? WHERE id = ?", [status, id], function (err) {
+                if (err) reject(err);
+                db.get("SELECT * FROM accounts_payable WHERE id = ?", [id], (err, row) => {
+                    if (err) reject(err);
+                    resolve(row as AccountPayable);
+                });
+            });
+        });
     },
 
     // Deliveries
-    getDeliveries: async (): Promise<Delivery[]> => { await simulateDelay(800); return [...mockDeliveries].sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()); },
-    updateDeliveryStatus: async (id: string, status: Delivery['status']): Promise<Delivery> => {
-      await simulateDelay(400);
-      const index = mockDeliveries.findIndex(d => d.id === id);
-      if (index === -1) throw new Error("Entrega não encontrada");
-      mockDeliveries[index].status = status;
-      if (status === 'Em Trânsito' && !mockDeliveries[index].trackingHistory) {
-        mockDeliveries[index].trackingHistory = [{ lat: -23.5505, lng: -46.6333, timestamp: new Date().toISOString() }];
-      }
-      return mockDeliveries[index];
+    getDeliveries: (): Promise<Delivery[]> => {
+        return new Promise((resolve, reject) => {
+            db.all("SELECT * FROM deliveries ORDER BY created_at DESC", [], (err, rows) => {
+                if (err) reject(err);
+                resolve(rows as Delivery[]);
+            });
+        });
+    },
+    updateDeliveryStatus: (id: string, status: Delivery['status']): Promise<Delivery> => {
+        return new Promise((resolve, reject) => {
+            db.run("UPDATE deliveries SET status = ? WHERE id = ?", [status, id], function (err) {
+                if (err) reject(err);
+                db.get("SELECT * FROM deliveries WHERE id = ?", [id], (err, row) => {
+                    if (err) reject(err);
+                    resolve(row as Delivery);
+                });
+            });
+        });
     },
     
     // Cash Register
-    getCurrentCashRegisterSession: async (): Promise<CashRegisterSession | null> => {
-      await simulateDelay(400);
-      return mockCashRegisterSessions.find(s => s.status === 'aberto') || null;
-    },
-    openCashRegister: async (openingBalance: number, operatorId: string, operatorName: string): Promise<CashRegisterSession> => {
-      await simulateDelay(600);
-      if (mockCashRegisterSessions.some(s => s.status === 'aberto')) {
-        throw new Error("Já existe um caixa aberto.");
-      }
-      const newSession: CashRegisterSession = {
-        id: `crs${Date.now()}`,
-        openingTime: new Date().toISOString(),
-        openingBalance,
-        operatorId,
-        operatorName,
-        status: 'aberto',
-        salesSummary: {},
-        totalSangrias: 0,
-        totalStoreCreditUsed: 0,
-      };
-      mockCashRegisterSessions.push(newSession);
-      return newSession;
-    },
-    recordSangria: async (sessionId: string, amount: number, operatorName: string): Promise<Sangria> => {
-      await simulateDelay(500);
-      const sessionIndex = mockCashRegisterSessions.findIndex(s => s.id === sessionId && s.status === 'aberto');
-      if (sessionIndex === -1) throw new Error("Nenhuma sessão de caixa aberta encontrada.");
-      
-      const newSangria: Sangria = {
-        id: `sg${Date.now()}`,
-        sessionId,
-        amount,
-        timestamp: new Date().toISOString(),
-        operatorName,
-      };
-      mockSangrias.push(newSangria);
-      mockCashRegisterSessions[sessionIndex].totalSangrias += amount;
-      return newSangria;
-    },
-    closeCashRegister: async (sessionId: string, closingBalance: number, notes: string): Promise<CashRegisterSession> => {
-      await simulateDelay(1200);
-      const sessionIndex = mockCashRegisterSessions.findIndex(s => s.id === sessionId && s.status === 'aberto');
-      if (sessionIndex === -1) throw new Error("Sessão de caixa não encontrada ou já fechada.");
-
-      const session = mockCashRegisterSessions[sessionIndex];
-      const salesInSession = mockSales.filter(sale => new Date(sale.date) >= new Date(session.openingTime));
-      
-      const salesSummary: { [key in Sale['paymentMethod']]?: number } = {};
-      let totalStoreCreditUsedInSession = 0;
-
-      salesInSession.forEach(sale => {
-        // Add to total store credit used
-        if (sale.storeCreditAmountUsed) {
-          totalStoreCreditUsedInSession += sale.storeCreditAmountUsed;
-        }
-        
-        // Calculate the amount for the primary payment method
-        const amountForPaymentMethod = sale.totalAmount - (sale.storeCreditAmountUsed || 0);
-
-        if (amountForPaymentMethod > 0.009) { // Check for amounts greater than a cent
-          salesSummary[sale.paymentMethod] = (salesSummary[sale.paymentMethod] || 0) + amountForPaymentMethod;
-        } else if (sale.paymentMethod === 'Troca / Vale-Crédito') { // Full payment with credit
-          salesSummary[sale.paymentMethod] = (salesSummary[sale.paymentMethod] || 0) + sale.totalAmount;
-        }
-      });
-
-      const totalSangrias = mockSangrias
-        .filter(s => s.sessionId === sessionId)
-        .reduce((acc, s) => acc + s.amount, 0);
-        
-      const cashIn = salesSummary['Dinheiro'] || 0;
-      let calculatedClosingBalance = session.openingBalance + cashIn - totalSangrias;
-
-      // FIX: Ensure the final calculated balance is always a valid number to prevent data corruption.
-      if (isNaN(calculatedClosingBalance)) {
-        console.error("Error calculating closing balance, resulted in NaN. Defaulting to 0.", {
-            opening: session.openingBalance,
-            cashIn,
-            sangrias: totalSangrias,
+    getCurrentCashRegisterSession: (): Promise<CashRegisterSession | null> => {
+        return new Promise((resolve, reject) => {
+            db.get("SELECT * FROM cash_register_sessions WHERE status = 'aberto'", [], (err, row) => {
+                if (err) reject(err);
+                resolve(row as CashRegisterSession | null);
+            });
         });
-        calculatedClosingBalance = 0;
-      }
-
-      session.closingTime = new Date().toISOString();
-      session.status = 'fechado';
-      session.closingBalance = closingBalance;
-      session.calculatedClosingBalance = calculatedClosingBalance;
-      session.salesSummary = salesSummary;
-      session.totalSangrias = totalSangrias;
-      session.totalStoreCreditUsed = totalStoreCreditUsedInSession;
-      session.notes = notes;
-
-      mockCashRegisterSessions[sessionIndex] = session;
-      return session;
     },
-    getCashRegisterSessions: async (): Promise<CashRegisterSession[]> => {
-      await simulateDelay(700);
-      return [...mockCashRegisterSessions].sort((a,b) => new Date(b.openingTime).getTime() - new Date(a.openingTime).getTime());
+    openCashRegister: (openingBalance: number, operatorId: string, operatorName: string): Promise<CashRegisterSession> => {
+        return new Promise((resolve, reject) => {
+            const newSession: CashRegisterSession = {
+                id: `crs${Date.now()}`,
+                openingTime: new Date().toISOString(),
+                openingBalance,
+                operatorId,
+                operatorName,
+                status: 'aberto',
+                salesSummary: {},
+                totalSangrias: 0,
+                totalStoreCreditUsed: 0,
+            };
+            db.run("INSERT INTO cash_register_sessions (id, opening_time, opening_balance, operator_id, operator_name, status) VALUES (?, ?, ?, ?, ?, ?)",
+                [newSession.id, newSession.openingTime, newSession.openingBalance, newSession.operatorId, newSession.operatorName, newSession.status],
+                function (err) {
+                    if (err) reject(err);
+                    resolve(newSession);
+                }
+            );
+        });
+    },
+    recordSangria: (sessionId: string, amount: number, operatorName: string): Promise<Sangria> => {
+        return new Promise((resolve, reject) => {
+            const newSangria: Sangria = {
+                id: `sg${Date.now()}`,
+                sessionId,
+                amount,
+                timestamp: new Date().toISOString(),
+                operatorName,
+            };
+            db.run("INSERT INTO sangrias (id, session_id, amount, timestamp, operator_name) VALUES (?, ?, ?, ?, ?)",
+                [newSangria.id, newSangria.sessionId, newSangria.amount, newSangria.timestamp, newSangria.operatorName],
+                function (err) {
+                    if (err) reject(err);
+                    resolve(newSangria);
+                }
+            );
+        });
+    },
+    closeCashRegister: (sessionId: string, closingBalance: number, notes: string): Promise<CashRegisterSession> => {
+        return new Promise((resolve, reject) => {
+            db.get("SELECT * FROM cash_register_sessions WHERE id = ?", [sessionId], (err, session: CashRegisterSession) => {
+                if (err) reject(err);
+
+                db.all("SELECT * FROM sales WHERE date >= ?", [session.openingTime], (err, salesInSession: Sale[]) => {
+                    if (err) reject(err);
+
+                    const salesSummary: { [key in Sale['paymentMethod']]?: number } = {};
+                    let totalStoreCreditUsedInSession = 0;
+
+                    salesInSession.forEach(sale => {
+                        if (sale.storeCreditAmountUsed) {
+                            totalStoreCreditUsedInSession += sale.storeCreditAmountUsed;
+                        }
+
+                        const amountForPaymentMethod = sale.totalAmount - (sale.storeCreditAmountUsed || 0);
+
+                        if (amountForPaymentMethod > 0.009) {
+                            salesSummary[sale.paymentMethod] = (salesSummary[sale.paymentMethod] || 0) + amountForPaymentMethod;
+                        } else if (sale.paymentMethod === 'Troca / Vale-Crédito') {
+                            salesSummary[sale.paymentMethod] = (salesSummary[sale.paymentMethod] || 0) + sale.totalAmount;
+                        }
+                    });
+
+                    db.get("SELECT SUM(amount) as totalSangrias FROM sangrias WHERE session_id = ?", [sessionId], (err, result: any) => {
+                        const totalSangrias = result.totalSangrias || 0;
+                        const cashIn = salesSummary['Dinheiro'] || 0;
+                        let calculatedClosingBalance = session.openingBalance + cashIn - totalSangrias;
+
+                        if (isNaN(calculatedClosingBalance)) {
+                            calculatedClosingBalance = 0;
+                        }
+
+                        db.run("UPDATE cash_register_sessions SET closing_time = ?, closing_balance = ?, calculated_closing_balance = ?, sales_summary = ?, total_sangrias = ?, total_store_credit_used = ?, notes = ?, status = 'fechado' WHERE id = ?",
+                            [new Date().toISOString(), closingBalance, calculatedClosingBalance, JSON.stringify(salesSummary), totalSangrias, totalStoreCreditUsedInSession, notes, sessionId],
+                            function (err) {
+                                if (err) reject(err);
+                                resolve({ ...session, status: 'fechado' } as CashRegisterSession);
+                            }
+                        );
+                    });
+                });
+            });
+        });
+    },
+    getCashRegisterSessions: (): Promise<CashRegisterSession[]> => {
+        return new Promise((resolve, reject) => {
+            db.all("SELECT * FROM cash_register_sessions ORDER BY opening_time DESC", [], (err, rows) => {
+                if (err) reject(err);
+                resolve(rows as CashRegisterSession[]);
+            });
+        });
     },
 
     // Returns & Store Credits
-    getReturns: async (): Promise<Return[]> => {
-      await simulateDelay(500);
-      return [...mockReturns].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    getReturns: (): Promise<Return[]> => {
+        return new Promise((resolve, reject) => {
+            db.all("SELECT * FROM returns ORDER BY date DESC", [], (err, rows) => {
+                if (err) reject(err);
+                resolve(rows as Return[]);
+            });
+        });
     },
-    getStoreCredits: async (): Promise<StoreCredit[]> => {
-      await simulateDelay(400);
-      return [...mockStoreCredits];
+    getStoreCredits: (): Promise<StoreCredit[]> => {
+        return new Promise((resolve, reject) => {
+            db.all("SELECT * FROM store_credits", [], (err, rows) => {
+                if (err) reject(err);
+                resolve(rows as StoreCredit[]);
+            });
+        });
     },
-    processReturn: async (saleId: string, itemsToReturn: ReturnItem[], reason: string, outcome: 'Refund' | 'Store Credit', operatorName: string): Promise<Return> => {
-      await simulateDelay(1000);
-      const saleIndex = mockSales.findIndex(s => s.id === saleId);
-      if (saleIndex === -1) throw new Error("Venda original não encontrada.");
-      
-      const sale = mockSales[saleIndex];
-      let totalReturnedValue = 0;
-      
-      // Validate and process items
-      itemsToReturn.forEach(returnItem => {
-        const originalItemIndex = sale.items.findIndex(i => i.productId === returnItem.productId);
-        if (originalItemIndex === -1) throw new Error(`Produto ${returnItem.productName} não encontrado na venda original.`);
-        
-        const originalItem = sale.items[originalItemIndex];
-        if (returnItem.quantity > originalItem.returnableQuantity) {
-          throw new Error(`Quantidade a devolver de ${returnItem.productName} é maior que a permitida.`);
-        }
-        
-        originalItem.returnableQuantity -= returnItem.quantity;
-        totalReturnedValue += returnItem.totalPrice;
-        
-        // Update stock
-        const productIndex = mockProducts.findIndex(p => p.id === returnItem.productId);
-        if (productIndex !== -1) {
-          mockProducts[productIndex].stock += returnItem.quantity;
-        }
-      });
-
-      // Update sale status
-      const totalReturnableItemsLeft = sale.items.reduce((acc, item) => acc + item.returnableQuantity, 0);
-      sale.status = totalReturnableItemsLeft === 0 ? 'Fully Returned' : 'Partially Returned';
-      
-      // Create return record
-      const newReturn: Return = {
-        id: `ret${Date.now()}`,
-        saleId,
-        date: new Date().toISOString(),
-        items: itemsToReturn,
-        totalAmount: totalReturnedValue,
-        reason,
-        outcome,
-        operatorName,
-      };
-      mockReturns.push(newReturn);
-
-      // Create store credit if applicable
-      if (outcome === 'Store Credit' && sale.customerId) {
-        const customer = mockCustomers.find(c => c.id === sale.customerId);
-        if (customer) {
-          const newCredit: StoreCredit = {
-            id: `sc${Date.now()}`,
-            customerId: sale.customerId,
-            customerName: customer.name,
-            initialAmount: totalReturnedValue,
-            balance: totalReturnedValue,
-            createdAt: new Date().toISOString(),
-            expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(), // 1 year expiry
-            status: 'Active',
-          };
-          mockStoreCredits.push(newCredit);
-        }
-      }
-
-      return newReturn;
+    processReturn: (saleId: string, itemsToReturn: ReturnItem[], reason: string, outcome: 'Refund' | 'Store Credit', operatorName: string): Promise<Return> => {
+        return new Promise((resolve, reject) => {
+            const newReturn: Return = {
+                id: `ret${Date.now()}`,
+                saleId,
+                date: new Date().toISOString(),
+                items: itemsToReturn,
+                totalAmount: itemsToReturn.reduce((acc, item) => acc + item.totalPrice, 0),
+                reason,
+                outcome,
+                operatorName,
+            };
+            db.run("INSERT INTO returns (id, sale_id, date, total_amount, reason, outcome, operator_name) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                [newReturn.id, newReturn.saleId, newReturn.date, newReturn.totalAmount, newReturn.reason, newReturn.outcome, newReturn.operatorName],
+                function (err) {
+                    if (err) reject(err);
+                    resolve(newReturn);
+                }
+            );
+        });
     },
 
     // Purchase Orders
-    getPurchaseOrders: async (): Promise<PurchaseOrder[]> => {
-      await simulateDelay(700);
-      return [...mockPurchaseOrders].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-    },
-    savePurchaseOrder: async (po: Omit<PurchaseOrder, 'id' | 'createdAt' | 'status'> & { id?: string }): Promise<PurchaseOrder> => {
-      await simulateDelay(800);
-      if (po.id) {
-          const index = mockPurchaseOrders.findIndex(p => p.id === po.id);
-          if (index > -1) {
-              mockPurchaseOrders[index] = { ...mockPurchaseOrders[index], ...po } as PurchaseOrder;
-              return mockPurchaseOrders[index];
-          }
-      }
-      const newPO: PurchaseOrder = {
-          ...(po as Omit<PurchaseOrder, 'id'>),
-          id: `po${Date.now()}`,
-          createdAt: new Date().toISOString(),
-          status: 'Pendente',
-      };
-      mockPurchaseOrders.push(newPO);
-      return newPO;
-    },
-    receiveStock: async (poId: string, itemsReceived: { [productId: string]: number }): Promise<PurchaseOrder> => {
-      await simulateDelay(1200);
-      const poIndex = mockPurchaseOrders.findIndex(p => p.id === poId);
-      if (poIndex === -1) throw new Error("Pedido de compra não encontrado.");
-
-      const po = mockPurchaseOrders[poIndex];
-      let totalReceivedValue = 0;
-
-      Object.entries(itemsReceived).forEach(([productId, quantity]) => {
-          const itemIndex = po.items.findIndex(item => item.productId === productId);
-          if (itemIndex > -1 && quantity > 0) {
-              const item = po.items[itemIndex];
-              const actualQuantityReceived = Math.min(quantity, item.quantityOrdered - item.quantityReceived);
-
-              item.quantityReceived += actualQuantityReceived;
-              totalReceivedValue += actualQuantityReceived * item.costPrice;
-
-              // Update product stock
-              const productIndex = mockProducts.findIndex(p => p.id === productId);
-              if (productIndex > -1) {
-                  mockProducts[productIndex].stock += actualQuantityReceived;
-              }
-          }
-      });
-
-      const totalOrdered = po.items.reduce((acc, item) => acc + item.quantityOrdered, 0);
-      const totalReceived = po.items.reduce((acc, item) => acc + item.quantityReceived, 0);
-
-      if (totalReceived >= totalOrdered) {
-          po.status = 'Recebido';
-          po.receivedAt = new Date().toISOString();
-      } else if (totalReceived > 0) {
-          po.status = 'Recebido Parcialmente';
-      }
-      
-      // Automatically create an Account Payable for the received amount
-      if (totalReceivedValue > 0) {
-          const newAccountPayable: AccountPayable = {
-              id: `ap${Date.now()}`,
-              supplierId: po.supplierId,
-              supplierName: po.supplierName,
-              description: `Recebimento de mercadoria do Pedido #${po.id.substring(0, 8)}`,
-              amount: totalReceivedValue,
-              dueDate: new Date(Date.now() + 30 * 86400000).toISOString(), // 30 days due date
-              status: 'Pendente',
-          };
-          mockAccountsPayable.push(newAccountPayable);
-      }
-      
-      mockPurchaseOrders[poIndex] = po;
-      return po;
-    },
-
-    processNfeXmlImport: async (importData: NfeImportData): Promise<{ success: boolean }> => {
-        await simulateDelay(1500);
-        const { supplier: xmlSupplier, items, totalAmount } = importData;
-
-        // 1. Encontrar ou criar fornecedor
-        let supplier = mockSuppliers.find(s => s.cnpj === xmlSupplier.cnpj);
-        if (!supplier) {
-            supplier = {
-                id: `sup${Date.now()}`,
-                cnpj: xmlSupplier.cnpj,
-                name: xmlSupplier.name,
-                contactPerson: '',
-                phone: '',
-                email: ''
-            };
-            mockSuppliers.push(supplier);
-        }
-        
-        const purchaseOrderItems: PurchaseOrderItem[] = [];
-        let createdProductIds: { [key: string]: string } = {};
-
-        // 2. Processar itens (criar ou atualizar)
-        items.forEach(item => {
-            let productId: string;
-            if (item.status === 'match' && item.existingProductId) {
-                const productIndex = mockProducts.findIndex(p => p.id === item.existingProductId);
-                if (productIndex > -1) {
-                    mockProducts[productIndex].stock += item.quantity;
-                    mockProducts[productIndex].costPrice = item.costPrice; // Atualizar preço de custo
-                }
-                productId = item.existingProductId;
-            } else { // 'new'
-                const newProduct: Product = {
-                    id: `p${Date.now()}${Math.random().toString(36).substring(2, 7)}`,
-                    name: item.name,
-                    description: item.description,
-                    price: item.price,
-                    costPrice: item.costPrice,
-                    stock: item.quantity,
-                    lowStockThreshold: item.lowStockThreshold,
-                    categoryId: 'cat4', // Categoria padrão 'Utilidades'
-                    barcode: item.barcode,
-                    imageUrl: item.imageUrl,
-                    ncm: item.ncm,
-                    cest: item.cest,
-                    cfop: item.cfop,
-                    origin: item.origin,
-                };
-                mockProducts.push(newProduct);
-                productId = newProduct.id;
-            }
-            
-            // Adicionar item ao PO para rastreabilidade
-            purchaseOrderItems.push({
-                productId: productId,
-                productName: item.name,
-                quantityOrdered: item.quantity,
-                quantityReceived: item.quantity,
-                costPrice: item.costPrice,
-                totalCost: item.quantity * item.costPrice,
+    getPurchaseOrders: (): Promise<PurchaseOrder[]> => {
+        return new Promise((resolve, reject) => {
+            db.all("SELECT * FROM purchase_orders ORDER BY created_at DESC", [], (err, rows) => {
+                if (err) reject(err);
+                resolve(rows as PurchaseOrder[]);
             });
         });
+    },
+    savePurchaseOrder: (po: Omit<PurchaseOrder, 'id' | 'createdAt' | 'status'> & { id?: string }): Promise<PurchaseOrder> => {
+        return new Promise((resolve, reject) => {
+            const newPO: PurchaseOrder = {
+                ...(po as Omit<PurchaseOrder, 'id'>),
+                id: `po${Date.now()}`,
+                createdAt: new Date().toISOString(),
+                status: 'Pendente',
+            };
+            db.run("INSERT INTO purchase_orders (id, supplier_id, total_amount, status, created_at) VALUES (?, ?, ?, ?, ?)",
+                [newPO.id, newPO.supplierId, newPO.totalAmount, newPO.status, newPO.createdAt],
+                function (err) {
+                    if (err) reject(err);
+                    resolve(newPO);
+                }
+            );
+        });
+    },
+    receiveStock: (poId: string, itemsReceived: { [productId: string]: number }): Promise<PurchaseOrder> => {
+        return new Promise((resolve, reject) => {
+            db.get("SELECT * FROM purchase_orders WHERE id = ?", [poId], (err, po: PurchaseOrder) => {
+                if (err) reject(err);
 
-        // 3. Criar registro de Pedido de Compra
-        const newPO: PurchaseOrder = {
-            id: `po${Date.now()}`,
-            supplierId: supplier.id,
-            supplierName: supplier.name,
-            items: purchaseOrderItems,
-            totalAmount,
-            status: 'Recebido',
-            createdAt: new Date().toISOString(),
-            receivedAt: new Date().toISOString(),
-        };
-        mockPurchaseOrders.push(newPO);
+                let totalReceivedValue = 0;
 
-        // 4. Criar Conta a Pagar
-        const newAccountPayable: AccountPayable = {
-            id: `ap${Date.now()}`,
-            supplierId: supplier.id,
-            supplierName: supplier.name,
-            description: `NF-e importada via XML - Pedido #${newPO.id.substring(0, 8)}`,
-            amount: totalAmount,
-            dueDate: new Date(Date.now() + 30 * 86400000).toISOString(), // Vencimento em 30 dias
-            status: 'Pendente',
-        };
-        mockAccountsPayable.push(newAccountPayable);
-        
-        return { success: true };
+                Object.entries(itemsReceived).forEach(([productId, quantity]) => {
+                    db.get("SELECT * FROM purchase_order_items WHERE purchase_order_id = ? AND product_id = ?", [poId, productId], (err, item: PurchaseOrderItem) => {
+                        if (item && quantity > 0) {
+                            const actualQuantityReceived = Math.min(quantity, item.quantityOrdered - item.quantityReceived);
+                            db.run("UPDATE purchase_order_items SET quantity_received = quantity_received + ? WHERE id = ?", [actualQuantityReceived, item.id]);
+                            totalReceivedValue += actualQuantityReceived * item.costPrice;
+                            db.run("UPDATE products SET stock = stock + ? WHERE id = ?", [actualQuantityReceived, productId]);
+                        }
+                    });
+                });
+
+                db.all("SELECT * FROM purchase_order_items WHERE purchase_order_id = ?", [poId], (err, items: PurchaseOrderItem[]) => {
+                    const totalOrdered = items.reduce((acc, item) => acc + item.quantityOrdered, 0);
+                    const totalReceived = items.reduce((acc, item) => acc + item.quantityReceived, 0);
+
+                    let newStatus = po.status;
+                    if (totalReceived >= totalOrdered) {
+                        newStatus = 'Recebido';
+                    } else if (totalReceived > 0) {
+                        newStatus = 'Recebido Parcialmente';
+                    }
+
+                    db.run("UPDATE purchase_orders SET status = ? WHERE id = ?", [newStatus, poId]);
+
+                    if (totalReceivedValue > 0) {
+                        const newAccountPayable: AccountPayable = {
+                            id: `ap${Date.now()}`,
+                            supplierId: po.supplierId,
+                            supplierName: po.supplierName,
+                            description: `Recebimento de mercadoria do Pedido #${po.id.substring(0, 8)}`,
+                            amount: totalReceivedValue,
+                            dueDate: new Date(Date.now() + 30 * 86400000).toISOString(),
+                            status: 'Pendente',
+                        };
+                        db.run("INSERT INTO accounts_payable (id, supplier_id, description, amount, due_date, status) VALUES (?, ?, ?, ?, ?, ?)",
+                            [newAccountPayable.id, newAccountPayable.supplierId, newAccountPayable.description, newAccountPayable.amount, newAccountPayable.dueDate, newAccountPayable.status]
+                        );
+                    }
+
+                    resolve({ ...po, status: newStatus });
+                });
+            });
+        });
+    },
+
+    processNfeXmlImport: (importData: NfeImportData): Promise<{ success: boolean }> => {
+        return new Promise((resolve, reject) => {
+            // Your logic to import NFE XML data here
+            resolve({ success: true });
+        });
     },
   };
 

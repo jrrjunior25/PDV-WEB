@@ -8,6 +8,16 @@ import { PlusIcon, TicketIcon } from './icons/Icon';
 import Modal from './ui/Modal';
 import ErrorDisplay from './ui/ErrorDisplay';
 import { useAuth } from '../auth/AuthContext';
+import Input from './ui/Input';
+import { z } from 'zod';
+
+const customerSchema = z.object({
+  name: z.string().min(3, "O nome deve ter pelo menos 3 caracteres."),
+  cpfCnpj: z.string().nonempty("CPF/CNPJ é obrigatório."),
+  email: z.string().email("Email inválido."),
+  phone: z.string().optional(),
+  address: z.string().optional(),
+});
 
 interface CustomerDetailModalProps {
   customer: Customer;
@@ -76,6 +86,11 @@ const Customers = () => {
   
   const loading = loadingCustomers || loadingSales || loadingCredits;
   const error = customersError || salesError || creditsError;
+
+  const [isModalOpen, setModalOpen] = useState(false);
+  const [editingCustomer, setEditingCustomer] = useState<Partial<Customer> | null>(null);
+  const [validationErrors, setValidationErrors] = useState<z.ZodError | null>(null);
+
   const refetchAll = () => {
     refetchCustomers();
     refetchSales();
@@ -83,6 +98,35 @@ const Customers = () => {
   };
 
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+
+  const openEditModal = (customer: Partial<Customer> | null = null) => {
+    setValidationErrors(null);
+    setEditingCustomer(customer ? { ...customer } : { name: '', cpfCnpj: '', email: '', phone: '', address: '' });
+    setModalOpen(true);
+  };
+
+  const handleSaveCustomer = async () => {
+    if (!editingCustomer) return;
+
+    const result = customerSchema.safeParse(editingCustomer);
+    if (!result.success) {
+      setValidationErrors(result.error);
+      return;
+    }
+
+    try {
+      await api.saveCustomer(result.data as Customer);
+      refetchCustomers();
+      setModalOpen(false);
+      setEditingCustomer(null);
+    } catch (err) {
+      console.error("Failed to save customer", err);
+    }
+  };
+
+  const getValidationError = (field: string) => {
+    return validationErrors?.errors.find(err => err.path.includes(field))?.message;
+  }
 
   const renderTableContent = () => {
     if (loading) {
@@ -107,7 +151,7 @@ const Customers = () => {
         <div className="flex justify-between items-center">
             <h1 className="text-3xl font-bold text-text-primary">Clientes</h1>
             {user?.role !== 'caixa' && (
-              <Button onClick={() => alert('Funcionalidade de adicionar cliente a ser implementada.')}>
+              <Button onClick={() => openEditModal()}>
                   <PlusIcon className="h-5 w-5 mr-2"/> Adicionar Cliente
               </Button>
             )}
@@ -139,6 +183,21 @@ const Customers = () => {
             isOpen={!!selectedCustomer}
             onClose={() => setSelectedCustomer(null)}
         />
+    )}
+    {isModalOpen && (
+      <Modal isOpen={isModalOpen} onClose={() => setModalOpen(false)} title={editingCustomer?.id ? 'Editar Cliente' : 'Adicionar Cliente'}>
+        <div className="space-y-4">
+          <Input name="name" label="Nome Completo" value={editingCustomer?.name || ''} onChange={e => setEditingCustomer({ ...editingCustomer, name: e.target.value })} error={getValidationError('name')} />
+          <Input name="cpfCnpj" label="CPF/CNPJ" value={editingCustomer?.cpfCnpj || ''} onChange={e => setEditingCustomer({ ...editingCustomer, cpfCnpj: e.target.value })} error={getValidationError('cpfCnpj')} />
+          <Input name="email" label="Email" type="email" value={editingCustomer?.email || ''} onChange={e => setEditingCustomer({ ...editingCustomer, email: e.target.value })} error={getValidationError('email')} />
+          <Input name="phone" label="Telefone" value={editingCustomer?.phone || ''} onChange={e => setEditingCustomer({ ...editingCustomer, phone: e.target.value })} error={getValidationError('phone')} />
+          <Input name="address" label="Endereço" value={editingCustomer?.address || ''} onChange={e => setEditingCustomer({ ...editingCustomer, address: e.target.value })} error={getValidationError('address')} />
+        </div>
+        <div className="flex justify-end gap-3 mt-6">
+            <Button variant="secondary" onClick={() => setModalOpen(false)}>Cancelar</Button>
+            <Button onClick={handleSaveCustomer}>Salvar</Button>
+        </div>
+      </Modal>
     )}
     </>
   );

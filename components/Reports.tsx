@@ -6,6 +6,7 @@ import Card from './ui/Card';
 import Chart from './ui/Chart';
 import ErrorDisplay from './ui/ErrorDisplay';
 import { DollarSignIcon, ShoppingBagIcon, PackageIcon, BarChart3Icon, ChevronDownIcon, ChevronUpIcon } from './icons/Icon';
+import Button from './ui/Button';
 
 const Reports = () => {
   const { data: sales, loading: loadingSales, error: salesError, refetch: refetchSales } = useMockApi<Sale[]>(api.getSales);
@@ -13,6 +14,9 @@ const Reports = () => {
   const { data: categories, loading: loadingCategories, error: categoriesError, refetch: refetchCategories } = useMockApi<ProductCategory[]>(api.getProductCategories);
   const { data: cashSessions, loading: loadingCashSessions, error: cashSessionsError, refetch: refetchCashSessions } = useMockApi<CashRegisterSession[]>(api.getCashRegisterSessions);
 
+  const [filter, setFilter] = useState('all');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
   const [expandedSessionId, setExpandedSessionId] = useState<string | null>(null);
 
   const loading = loadingSales || loadingProducts || loadingCategories || loadingCashSessions;
@@ -27,11 +31,29 @@ const Reports = () => {
   const reportData = useMemo(() => {
     if (!sales || !products || !categories) return null;
 
-    const totalRevenue = sales.reduce((acc, sale) => acc + sale.totalAmount, 0);
-    const totalItemsSold = sales.flatMap(s => s.items).reduce((acc, item) => acc + item.quantity, 0);
+    const filteredSales = sales.filter(sale => {
+      const saleDate = new Date(sale.date);
+      if (filter === 'today') {
+        return saleDate.toDateString() === new Date().toDateString();
+      }
+      if (filter === 'yesterday') {
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        return saleDate.toDateString() === yesterday.toDateString();
+      }
+      if (filter === 'custom' && startDate && endDate) {
+        const start = new Date(startDate);
+        const end = new Date(endDate);
+        return saleDate >= start && saleDate <= end;
+      }
+      return true;
+    });
+
+    const totalRevenue = filteredSales.reduce((acc, sale) => acc + sale.totalAmount, 0);
+    const totalItemsSold = filteredSales.flatMap(s => s.items).reduce((acc, item) => acc + item.quantity, 0);
 
     const salesByCategory: { [key: string]: number } = {};
-    sales.forEach(sale => {
+    filteredSales.forEach(sale => {
       sale.items.forEach(item => {
         const product = products.find(p => p.id === item.productId);
         if (product) {
@@ -41,30 +63,29 @@ const Reports = () => {
       });
     });
     const categoryChartData = Object.entries(salesByCategory).map(([name, value]) => ({ name, value }));
-    
-    const salesByProduct: { [key: string]: { name: string, quantity: number, revenue: number } } = {};
-    sales.forEach(sale => {
-        sale.items.forEach(item => {
-            if (!salesByProduct[item.productId]) {
-                salesByProduct[item.productId] = { name: item.productName, quantity: 0, revenue: 0 };
-            }
-            salesByProduct[item.productId].quantity += item.quantity;
-            salesByProduct[item.productId].revenue += item.totalPrice;
-        });
-    });
-    const topProducts = Object.values(salesByProduct).sort((a,b) => b.revenue - a.revenue).slice(0, 5);
 
+    const salesByProduct: { [key: string]: { name: string, quantity: number, revenue: number } } = {};
+    filteredSales.forEach(sale => {
+      sale.items.forEach(item => {
+        if (!salesByProduct[item.productId]) {
+          salesByProduct[item.productId] = { name: item.productName, quantity: 0, revenue: 0 };
+        }
+        salesByProduct[item.productId].quantity += item.quantity;
+        salesByProduct[item.productId].revenue += item.totalPrice;
+      });
+    });
+    const topProducts = Object.values(salesByProduct).sort((a, b) => b.revenue - a.revenue).slice(0, 5);
 
     return {
       totalRevenue: totalRevenue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }),
-      totalSales: sales.length,
-      averageTicket: sales.length > 0 ? (totalRevenue / sales.length).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : 'R$ 0,00',
+      totalSales: filteredSales.length,
+      averageTicket: filteredSales.length > 0 ? (totalRevenue / filteredSales.length).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : 'R$ 0,00',
       totalItemsSold: totalItemsSold,
       categoryChartData,
       topProducts,
     };
-  }, [sales, products, categories]);
-  
+  }, [sales, products, categories, filter, startDate, endDate]);
+
   const formatCurrency = (value: number | undefined) => (value ?? 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
 
@@ -78,7 +99,17 @@ const Reports = () => {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-3xl font-bold text-text-primary">Relatórios Gerenciais</h1>
+      <div className="flex justify-between items-center">
+        <h1 className="text-3xl font-bold text-text-primary">Relatórios Gerenciais</h1>
+        <div className="flex items-center gap-2">
+          <Button variant={filter === 'all' ? 'primary' : 'secondary'} onClick={() => setFilter('all')}>Tudo</Button>
+          <Button variant={filter === 'today' ? 'primary' : 'secondary'} onClick={() => setFilter('today')}>Hoje</Button>
+          <Button variant={filter === 'yesterday' ? 'primary' : 'secondary'} onClick={() => setFilter('yesterday')}>Ontem</Button>
+          <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="p-2 border rounded-md" />
+          <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="p-2 border rounded-md" />
+          <Button variant={filter === 'custom' ? 'primary' : 'secondary'} onClick={() => setFilter('custom')}>Filtrar</Button>
+        </div>
+      </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         <Card title="Receita Total" value={reportData?.totalRevenue ?? 'R$ 0,00'} icon={DollarSignIcon} />

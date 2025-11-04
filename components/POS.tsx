@@ -47,6 +47,27 @@ const getCityFromAddress = (address: string | undefined): string => {
     return defaultCity; // Return a default if no valid city can be found.
 };
 
+const StockIndicator = ({ product }: { product: Product }) => {
+    const { stock, lowStockThreshold } = product;
+    let color = 'bg-green-500';
+    let text = 'Em estoque';
+
+    if (stock <= 0) {
+        color = 'bg-red-500';
+        text = 'Esgotado';
+    } else if (stock <= lowStockThreshold) {
+        color = 'bg-yellow-500';
+        text = 'Estoque baixo';
+    }
+
+    return (
+        <div className="flex items-center gap-2">
+            <span className={`w-3 h-3 rounded-full ${color}`}></span>
+            <span className="text-sm text-gray-600">{text} ({stock})</span>
+        </div>
+    );
+};
+
 const POS = () => {
   const { user } = useAuth();
   const { addNotification } = useNotifications();
@@ -58,6 +79,7 @@ const POS = () => {
   const [sessionError, setSessionError] = useState<string | null>(null);
   
   const [searchTerm, setSearchTerm] = useState('');
+  const [searchResults, setSearchResults] = useState<Product[]>([]);
   const [lastAddedItem, setLastAddedItem] = useState<SaleItem | null>(null);
   const [activeCustomer, setActiveCustomer] = useState<Customer | null>(null);
   const [customerCredits, setCustomerCredits] = useState<StoreCredit[]>([]);
@@ -70,6 +92,7 @@ const POS = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [saleCompleted, setSaleCompleted] = useState<Sale | null>(null);
 
+  const [isClearCartModalOpen, setClearCartModalOpen] = useState(false);
   const [isCashManagerOpen, setIsCashManagerOpen] = useState(false);
   const [sangriaAmount, setSangriaAmount] = useState(0);
   const [closingAmount, setClosingAmount] = useState<number | undefined>(undefined);
@@ -164,6 +187,7 @@ const POS = () => {
     if (product.stock > 0) {
         dispatch({ type: 'ADD_ITEM', payload: { product, quantity: 1 } });
         setSearchTerm('');
+        setSearchResults([]);
         searchInputRef.current?.focus();
     } else {
         addNotification(`Produto "${product.name}" sem estoque.`, 'error');
@@ -174,16 +198,24 @@ const POS = () => {
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!searchTerm.trim() || !activeCustomer) return;
-    
+
     const lowerCaseSearchTerm = searchTerm.toLowerCase();
-    
-    // Prioritize exact barcode match, then partial name match
-    const product = products?.find(p => p.barcode === searchTerm || p.name.toLowerCase().includes(lowerCaseSearchTerm));
-    
-    if (product) {
-      handleAddProduct(product);
+
+    // Find all matching products
+    const matchingProducts = products?.filter(p =>
+        p.barcode === searchTerm ||
+        p.name.toLowerCase().includes(lowerCaseSearchTerm)
+    );
+
+    if (matchingProducts && matchingProducts.length === 1) {
+        // If only one match, add it directly to the cart
+        handleAddProduct(matchingProducts[0]);
+    } else if (matchingProducts && matchingProducts.length > 1) {
+        // If multiple matches, display them for the user to choose
+        setSearchResults(matchingProducts);
     } else {
-      addNotification('Produto não encontrado.', 'error');
+        addNotification('Produto não encontrado.', 'error');
+        setSearchResults([]);
     }
   };
 
@@ -479,7 +511,7 @@ const PaymentModal = () => {
   }
 
   return (
-    <div className="relative flex flex-col h-full max-h-[calc(100vh-4rem)] bg-gray-200 font-sans">
+    <div className="flex flex-col h-full max-h-[calc(100vh-4rem)] bg-gray-200 font-sans">
       {cashSession === null && <CashRegisterOverlay />}
       {cashSession && !activeCustomer && <IdentifyCustomerModal />}
       
@@ -561,25 +593,44 @@ const PaymentModal = () => {
       </div>
 
        {/* Bottom: The operator controls */}
-      <div className="flex-shrink-0 bg-surface-card p-4 border-t-2 shadow-inner z-10">
+      <div className="relative flex-shrink-0 bg-surface-card p-4 border-t-2 shadow-inner z-10">
         <div className="flex items-center gap-4">
             <form onSubmit={handleSearchSubmit} className="flex-1 relative">
-                <Input 
+                <Input
                     ref={searchInputRef}
-                    type="text" 
-                    placeholder="Ler código de barras ou digitar nome do produto..." 
-                    value={searchTerm} 
+                    type="text"
+                    placeholder="Ler código de barras ou digitar nome do produto..."
+                    value={searchTerm}
                     onChange={e => setSearchTerm(e.target.value)}
                     className="pl-12 text-lg h-14"
                     aria-label="Busca de produto"
                     disabled={!activeCustomer}
                 />
                 <SearchIcon className="absolute left-4 top-1/2 -translate-y-1/2 h-7 w-7 text-text-muted" />
+
+                {/* Search results dropdown */}
+                {searchResults.length > 0 && (
+                    <div className="absolute bottom-full mb-2 w-full bg-white border rounded-lg shadow-lg z-20 max-h-60 overflow-y-auto">
+                        <ul>
+                            {searchResults.map(product => (
+                                <li key={product.id}
+                                    className="p-4 hover:bg-gray-100 cursor-pointer border-b flex justify-between items-center"
+                                    onClick={() => handleAddProduct(product)}>
+                                    <div>
+                                        <p className="font-semibold">{product.name}</p>
+                                        <p className="text-sm text-gray-500">{product.price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</p>
+                                    </div>
+                                    <StockIndicator product={product} />
+                                </li>
+                            ))}
+                        </ul>
+                    </div>
+                )}
             </form>
             <Button variant="secondary" className="h-14 px-4" onClick={() => setIsCashManagerOpen(true)} disabled={!cashSession}>
                 <CalculatorIcon className="h-6 w-6 mr-2" /> Gerenciar Caixa
             </Button>
-            <Button variant="danger" className="h-14 w-14 p-0" onClick={() => dispatch({ type: 'CLEAR_CART' })} disabled={cart.length === 0} aria-label="Limpar carrinho">
+            <Button variant="danger" className="h-14 w-14 p-0" onClick={() => setClearCartModalOpen(true)} disabled={cart.length === 0} aria-label="Limpar carrinho">
                 <Trash2Icon className="h-7 w-7"/>
             </Button>
             <Button onClick={() => setPaymentModalOpen(true)} disabled={cart.length === 0} className="h-14 text-lg px-8">
@@ -587,6 +638,19 @@ const PaymentModal = () => {
             </Button>
         </div>
       </div>
+
+      <Modal isOpen={isClearCartModalOpen} onClose={() => setClearCartModalOpen(false)} title="Confirmar Ação">
+        <div>
+            <p>Você tem certeza de que deseja limpar o carrinho? Todos os itens serão removidos.</p>
+            <div className="flex justify-end gap-3 mt-6">
+                <Button variant="secondary" onClick={() => setClearCartModalOpen(false)}>Cancelar</Button>
+                <Button variant="danger" onClick={() => {
+                    dispatch({ type: 'CLEAR_CART' });
+                    setClearCartModalOpen(false);
+                }}>Limpar Carrinho</Button>
+            </div>
+        </div>
+      </Modal>
 
       <Modal isOpen={isCashManagerOpen} onClose={() => setIsCashManagerOpen(false)} title={cashSession ? "Gerenciar Caixa" : "Abrir Caixa"}>
         {cashSession ? <ManageCashRegister /> : <OpenCashRegisterForm />}

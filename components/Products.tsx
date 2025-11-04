@@ -12,6 +12,16 @@ import { PlusIcon, EditIcon, SparklesIcon, MinusCircleIcon, PlusCircleIcon } fro
 import { useData } from '../contexts/DataContext';
 import { useNotifications } from '../contexts/NotificationContext';
 import SkeletonLoader from './ui/SkeletonLoader';
+import { z } from 'zod';
+
+const productSchema = z.object({
+    name: z.string().min(3, "O nome deve ter pelo menos 3 caracteres."),
+    price: z.number().positive("O preço deve ser um número positivo."),
+    costPrice: z.number().positive("O preço de custo deve ser um número positivo."),
+    stock: z.number().int().min(0, "O estoque não pode ser negativo."),
+    lowStockThreshold: z.number().int().min(0, "O alerta de estoque não pode ser negativo."),
+    categoryId: z.string().nonempty("A categoria é obrigatória."),
+});
 
 const Products = () => {
   const { data, loading, error, refetchAll } = useData();
@@ -20,6 +30,7 @@ const Products = () => {
 
   const [isModalOpen, setModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Partial<Product> | null>(null);
+  const [validationErrors, setValidationErrors] = useState<z.ZodError | null>(null);
   const [isGeneratingDesc, setIsGeneratingDesc] = useState(false);
   const [isUpdatingStock, setIsUpdatingStock] = useState<string | null>(null);
   
@@ -31,6 +42,7 @@ const Products = () => {
 
   // --- Product Modal Logic ---
   const openProductModal = (product: Partial<Product> | null = null) => {
+    setValidationErrors(null);
     setEditingProduct(product ? { ...product } : {
       name: '', description: '', price: 0, costPrice: 0, stock: 0, lowStockThreshold: 10,
       categoryId: categories?.[0]?.id || '', barcode: '',
@@ -49,9 +61,9 @@ const Products = () => {
     if (!editingProduct) return;
     const { name, value } = e.target;
     const numericFields = ['price', 'costPrice', 'stock', 'lowStockThreshold'];
-    setEditingProduct({ 
-      ...editingProduct, 
-      [name]: numericFields.includes(name) ? (parseFloat(value) || 0) : value 
+    setEditingProduct({
+      ...editingProduct,
+      [name]: numericFields.includes(name) ? (parseFloat(value) || 0) : value
     });
   };
   
@@ -72,8 +84,13 @@ const Products = () => {
 
   const handleProductSave = async () => {
     if (!editingProduct) return;
+    const result = productSchema.safeParse(editingProduct);
+    if (!result.success) {
+        setValidationErrors(result.error);
+        return;
+    }
     try {
-        await api.saveProduct(editingProduct as Product);
+        await api.saveProduct(result.data as Product);
         addNotification('Produto salvo com sucesso!', 'success');
         refetchAll();
         closeProductModal();
@@ -81,6 +98,10 @@ const Products = () => {
         addNotification(`Erro ao salvar produto: ${e.message}`, 'error');
     }
   };
+
+  const getValidationError = (field: string) => {
+    return validationErrors?.errors.find(err => err.path.includes(field))?.message;
+  }
   
   const handleStockChange = async (productId: string, newStock: number) => {
     if (newStock < 0 || isUpdatingStock) return;
@@ -216,16 +237,17 @@ const Products = () => {
       {isAdmin && isModalOpen && (
         <Modal isOpen={isModalOpen} onClose={closeProductModal} title={editingProduct?.id ? 'Editar Produto' : 'Adicionar Produto'}>
             <div className="space-y-4">
-            <Input name="name" label="Nome do Produto" value={editingProduct?.name || ''} onChange={handleProductInputChange} />
+            <Input name="name" label="Nome do Produto" value={editingProduct?.name || ''} onChange={handleProductInputChange} error={getValidationError('name')} />
             
             <div>
               <label htmlFor="categoryId" className="block text-sm font-medium text-text-secondary mb-1">Categoria</label>
               <div className="flex gap-2">
-                <select id="categoryId" name="categoryId" value={editingProduct?.categoryId || ''} onChange={handleProductInputChange} className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-brand-primary focus:border-transparent transition bg-white">
+                <select id="categoryId" name="categoryId" value={editingProduct?.categoryId || ''} onChange={handleProductInputChange} className={`w-full p-2 border rounded-md focus:ring-2 focus:ring-brand-primary focus:border-transparent transition bg-white ${getValidationError('categoryId') ? 'border-red-500' : 'border-gray-300'}`}>
                   {categories?.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
                 </select>
                 <Button variant="secondary" onClick={() => openCategoryModal()}>Gerenciar</Button>
               </div>
+              {getValidationError('categoryId') && <p className="text-red-500 text-sm mt-1">{getValidationError('categoryId')}</p>}
             </div>
 
             <div className="relative">
@@ -237,14 +259,14 @@ const Products = () => {
             </div>
             
             <div className="grid grid-cols-2 gap-4">
-                <Input name="costPrice" label="Preço de Custo" type="number" value={String(editingProduct?.costPrice || '')} onChange={handleProductInputChange} />
-                <Input name="price" label="Preço de Venda" type="number" value={String(editingProduct?.price || '')} onChange={handleProductInputChange} />
+                <Input name="costPrice" label="Preço de Custo" type="number" value={String(editingProduct?.costPrice || '')} onChange={handleProductInputChange} error={getValidationError('costPrice')} />
+                <Input name="price" label="Preço de Venda" type="number" value={String(editingProduct?.price || '')} onChange={handleProductInputChange} error={getValidationError('price')} />
             </div>
             <div className="grid grid-cols-2 gap-4">
                 <Input name="barcode" label="Código de Barras" value={editingProduct?.barcode || ''} onChange={handleProductInputChange} />
-                 <Input name="stock" label="Estoque" type="number" value={String(editingProduct?.stock || '')} onChange={handleProductInputChange} />
+                 <Input name="stock" label="Estoque" type="number" value={String(editingProduct?.stock || '')} onChange={handleProductInputChange} error={getValidationError('stock')} />
             </div>
-             <Input name="lowStockThreshold" label="Alerta de Estoque Baixo" type="number" value={String(editingProduct?.lowStockThreshold || '')} onChange={handleProductInputChange} />
+             <Input name="lowStockThreshold" label="Alerta de Estoque Baixo" type="number" value={String(editingProduct?.lowStockThreshold || '')} onChange={handleProductInputChange} error={getValidationError('lowStockThreshold')} />
 
             <div className="pt-4 mt-4 border-t">
                 <h4 className="text-md font-semibold text-text-primary mb-3">Dados Fiscais</h4>
